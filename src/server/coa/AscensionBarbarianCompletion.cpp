@@ -285,7 +285,14 @@ class barbarian_casts : public AllSpellScript
 {
 public:
     barbarian_casts() : AllSpellScript("barbarian_casts", { ALLSPELLHOOK_ON_CAST, ALLSPELLHOOK_ON_CALCULATED_TARGET,
-        ALLSPELLHOOK_ON_SUCCESSFUL_INTERRUPT, ALLSPELLHOOK_ON_SPELL_CHECK_CAST, ALLSPELLHOOK_ON_BEFORE_EFFECTS }) { }
+        ALLSPELLHOOK_ON_SUCCESSFUL_INTERRUPT, ALLSPELLHOOK_ON_SPELL_CHECK_CAST, ALLSPELLHOOK_ON_BEFORE_EFFECTS,
+        ALLSPELLHOOK_ON_CALC_MAX_DURATION }) { }
+
+    void OnCalcMaxDuration(Aura const* aura, int32& duration) override
+    {
+        if (aura && aura->GetId() == 705170)
+            duration = -1;
+    }
 
     void OnSpellBeforeEffects(Spell* spell, Unit* caster, SpellInfo const* info) override
     {
