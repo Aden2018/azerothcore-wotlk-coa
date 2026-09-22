@@ -244,6 +244,8 @@ class templar_casts : public AllSpellScript
         SpellInfo const* info = spell->GetSpellInfo();
         if (healing && Named(info, 801448) && player->HasAura(524765))
             Cast(player, player, 524766);
+        if (damage && Named(info, 804929))
+            Copy(player, player, 807414, damage);
         if (!damage || !player->IsValidAttackTarget(target))
             return;
         if (info->Id == 801450)
@@ -275,7 +277,6 @@ class templar_casts : public AllSpellScript
             SpreadCondemn(player, target);
         if (Named(info, 804929))
         {
-            Copy(player, player, 807414, damage);
             if (!spell->IsTriggered() &&
                 (Chance(player, 520883) || (!player->HasAura(520883) && Chance(player, 520017))))
                 Cast(player, target, info->Id);
