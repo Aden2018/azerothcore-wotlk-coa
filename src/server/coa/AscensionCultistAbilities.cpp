@@ -363,6 +363,41 @@ class spell_ascension_cultist_sanity_tap : public SpellScript
             SPELL_EFFECT_ENERGIZE_PCT);
     }
 };
+class spell_ascension_cultist_worrysome_idol : public SpellScript
+{
+    PrepareSpellScript(spell_ascension_cultist_worrysome_idol);
+    void Effect(SpellEffIndex index)
+    {
+        Unit* caster = GetCaster();
+        if (!Owner(caster))
+            return;
+        PreventHitDefaultEffect(index);
+        Unit* target = GetHitUnit();
+        SpellInfo const* info = GetSpellInfo();
+        int32 misc = info->Effects[index].MiscValue;
+        if (!caster || !target || !target->IsAlive() || misc < 0 || misc >= int32(MAX_POWERS))
+            return;
+        if (target->HasUnitState(UNIT_STATE_ISOLATED))
+        {
+            caster->SendSpellDamageImmune(target, info->Id);
+            return;
+        }
+        Powers power = Powers(misc);
+        if (target->IsPlayer() && !target->CanReceivePowerFromSpell(power) &&
+            !info->HasAttribute(SPELL_ATTR7_ONLY_IN_SPELLBOOK_UNTIL_LEARNED))
+            return;
+        uint32 maxPower = target->GetMaxPower(power);
+        uint32 currentPower = target->GetPower(power);
+        if (currentPower >= maxPower)
+            return;
+        caster->EnergizeBySpell(target, info->Id, CalculatePct(maxPower - currentPower, GetEffectValue()), power);
+    }
+    void Register() override
+    {
+        OnEffectHitTarget += SpellEffectFn(spell_ascension_cultist_worrysome_idol::Effect, EFFECT_0,
+            SPELL_EFFECT_ENERGIZE_PCT);
+    }
+};
 class spell_ascension_cultist_ability : public SpellScript
 {
     PrepareSpellScript(spell_ascension_cultist_ability);
@@ -449,12 +484,47 @@ class spell_ascension_cultist_shield : public SpellScript
         AfterCast += SpellCastFn(spell_ascension_cultist_shield::After);
     }
 };
+constexpr uint32 SPELL_SHADOW_TRAINING = 805607;
+constexpr uint32 SPELL_GAZE_OF_CTHUN_HEAL_TRIGGER = 520333;
+class aura_ascension_cultist_shadow_training : public AuraScript
+{
+    PrepareAuraScript(aura_ascension_cultist_shadow_training);
+    bool Validate(SpellInfo const* spellInfo) override
+    {
+        if (!spellInfo || spellInfo->Id != SPELL_SHADOW_TRAINING || spellInfo->SpellFamilyName != 31 ||
+            spellInfo->Effects[EFFECT_1].Effect != SPELL_EFFECT_APPLY_AURA ||
+            spellInfo->Effects[EFFECT_1].ApplyAuraName != SPELL_AURA_MOD_EXPERTISE ||
+            spellInfo->Effects[EFFECT_1].MiscValue != 0 || spellInfo->Effects[EFFECT_1].BasePoints != 99 ||
+            spellInfo->Effects[EFFECT_1].DieSides != 1)
+            return false;
+        SpellInfo const* gazeHeal = sSpellMgr->GetSpellInfo(SPELL_GAZE_OF_CTHUN_HEAL_TRIGGER);
+        return gazeHeal && gazeHeal->SpellFamilyName == 31 && (gazeHeal->SpellFamilyFlags & flag96(2097152, 0, 0));
+    }
+    void AddGazeHealingModifier(AuraEffect const* aurEff, SpellModifier*& spellMod)
+    {
+        if (spellMod)
+            return;
+        spellMod = new SpellModifier(aurEff->GetBase());
+        spellMod->op = SPELLMOD_DAMAGE;
+        spellMod->type = SPELLMOD_PCT;
+        spellMod->spellId = SPELL_SHADOW_TRAINING;
+        spellMod->mask = flag96(2097152, 0, 0);
+        spellMod->value = 100;
+    }
+    void Register() override
+    {
+        DoEffectCalcSpellMod += AuraEffectCalcSpellModFn(
+            aura_ascension_cultist_shadow_training::AddGazeHealingModifier, EFFECT_1, SPELL_AURA_MOD_EXPERTISE);
+    }
+};
 }
 void AddSC_AscensionCultistAbilities()
 {
     new cultist_spells();
     RegisterSpellScript(spell_ascension_cultist_resource);
     RegisterSpellScript(spell_ascension_cultist_sanity_tap);
+    RegisterSpellScript(spell_ascension_cultist_worrysome_idol);
     RegisterSpellScript(spell_ascension_cultist_ability);
     RegisterSpellScript(spell_ascension_cultist_shield);
+    RegisterSpellScript(aura_ascension_cultist_shadow_training);
 }
