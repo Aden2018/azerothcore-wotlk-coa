@@ -207,6 +207,8 @@ void ApplyContracts(SpellInfo* info)
     };
     if (id == Shadowhunter)
         dummy(EFFECT_1);
+    if (id == PuppeteersGrasp)
+        dummy(EFFECT_0);
     if ((id == ChosenOne || id == MojoHigh) &&
         info->Effects[EFFECT_0].ApplyAuraName == SPELL_AURA_ADD_FLAT_MODIFIER &&
         info->Effects[EFFECT_0].MiscValue == SPELLMOD_EFFECT3)
@@ -333,6 +335,14 @@ void ApplyContracts(SpellInfo* info)
         for (SpellEffectInfo& effect : info->Effects)
             if (!effect.IsAura())
                 effect.Effect = 0;
+    if (id == JungleBooms &&
+        info->Effects[EFFECT_1].ApplyAuraName == SPELL_AURA_ADD_FLAT_MODIFIER &&
+        info->Effects[EFFECT_1].MiscValue == 34 &&
+        info->Effects[EFFECT_1].BasePoints == -4 && info->Effects[EFFECT_1].DieSides == 1)
+    {
+        info->Effects[EFFECT_1].ApplyAuraName = SPELL_AURA_MOD_MAX_AFFECTED_TARGETS;
+        info->Effects[EFFECT_1].SpellClassMask = flag96(0, 0, 2048);
+    }
     if (IsIngredient(id))
     {
         info->StackAmount = 1;
@@ -496,6 +506,8 @@ void ApplyContracts(SpellInfo* info)
         info->Effects[EFFECT_2].ApplyAuraName = SPELL_AURA_MOD_ROOT;
         info->AuraInterruptFlags |= AURA_INTERRUPT_FLAG_TAKE_DAMAGE;
     }
+    if (id == Amphibimorph)
+        info->AuraInterruptFlags |= AURA_INTERRUPT_FLAG_TAKE_DAMAGE;
     if (IsBeam(info))
         info->ManaPerSecond = 0;
     if (id == Frenzy)

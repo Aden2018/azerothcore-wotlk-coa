@@ -52,9 +52,11 @@ enum DoctorSpells : uint32
     HexfireReady = 503626,
     HexfireAdept = 704500,
     BadJuju = 802087,
+    PuppeteersGrasp = 707209,
     MarkOfMalice = 802926,
     Shadowflare = 801669,
     ShadowflareHit = 802704,
+    OverflowingJuju = 707405,
     DarkIncantation = 525377,
     Puppets = 500015,
     PuppetHit = 801797,
@@ -180,6 +182,7 @@ enum DoctorSpells : uint32
     MojoThistle = 500472,
     MojoFish = 705850,
     MojoShrooms = 705851,
+    JungleBooms = 705859,
     JungleThistle = 500508,
     FrogShrooms = 500509,
     FishBones = 500594,
@@ -287,6 +290,7 @@ enum DoctorSpells : uint32
     Veil = 802100,
     VeilDamage = 806473,
     JungleProtection = 572872,
+    Amphibimorph = 500952,
     AutoShot = 75
 };
 
