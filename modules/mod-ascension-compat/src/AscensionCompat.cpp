@@ -2903,6 +2903,7 @@ private:
             !WasAvoidedByEveryTarget(player, spell))
         {
             player->CastSpell(player, SPELL_REAPER_SOUL_INFUSION_REMOVER, true);
+            ApplyAscensionReaperSoulInfusionSpent(player);
             return;
         }
 
@@ -2994,6 +2995,7 @@ private:
             !player->HasAura(SPELL_REAPER_SOUL_INFUSION))
         {
             player->CastSpell(player, SPELL_REAPER_SOUL_INFUSION, true);
+            ApplyAscensionReaperSoulInfusionGained(player);
         }
     }
 
