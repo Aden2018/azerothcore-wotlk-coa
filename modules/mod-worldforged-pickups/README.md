@@ -5,22 +5,957 @@ packet, a crate - a world object **named after the base item it holds**. Every c
 open each one **once**; after that it is spent for that character, permanently.
 
 The objects themselves are data, restored by this module's
-`data/sql/db-world/2026_09_16_00_worldforged_pickups.sql`: **1,555 pickups, 1,510 of them
-placed in the world, each holding exactly its own base item**. What data cannot express - *who*
-has already looted *which* pickup - is this module.
+`data/sql/db-world/2026_09_16_00_worldforged_pickups.sql`,
+`data/sql/db-world/2026_09_22_00_worldforged_pickup_spawns.sql`,
+`data/sql/db-world/2026_09_22_01_worldforged_missing_pickups.sql`,
+`data/sql/db-world/2026_09_22_02_worldforged_crossrealm_spawns.sql`,
+`data/sql/db-world/2026_09_22_03_worldforged_appearance_and_ground.sql`,
+`data/sql/db-world/2026_09_23_02_worldforged_appearance_records.sql` and
+`data/sql/db-world/2026_09_23_03_worldforged_positions.sql`: **1,742 pickups,
+each holding exactly its own base item, their appearance read from Ascension's own records
+and their places checked against the position the Exiles database publishes for every base
+item**. Later passes restore the realm's own objects that this world never
+carried, one zone at a time - the Redridge chest (`2026_09_23_14_worldforged_redridge_mountains.sql`),
+three in Dun Morogh (`2026_09_23_16_worldforged_dun_morogh.sql`) and four in Searing Gorge
+(`2026_09_23_19_worldforged_searing_gorge.sql`). The tenth pass, `data/sql/db-world/2026_09_23_05_worldforged_map.sql` with
+`2026_09_23_06_worldforged_recorded_heights.sql` and
+`2026_09_23_07_worldforged_spare_spawns.sql`, then stands the world on the placements the
+realm map itself records, and on nothing else - see that pass below. What data cannot express
+- *who* has already looted *which* pickup - is this module.
 
 ## What it restores
 
 | | |
 | --- | --- |
-| Unplaced objects | 1,555 objects have no usable observation, leaving 1,510 spawns in a fixed GUID block (6900001+) |
+| Objects | 1,745 pickup templates: 1,556 in the realm's own catalog ids, 184 created for the items no object held, 2 that the client's own cache holds and the catalog pass missed, 1 that the Redridge pass restores as its own marker names it |
+| Spawns | 2,469 placements standing over the four continent maps, from the realm map's own 2,480 placements (the tenth pass), plus Elwynn's two objects the realm had never had, less the placings the marker-by-marker passes removed, plus the one the Redridge pass restored; 1,577 pickup objects stand somewhere, one visible companion prop among them |
 | Items | every pickup holds the one item its own name and the realm's catalog say it holds, at 100% |
-| Placement | the community's own observed coordinates; the realm's dump corroborates them (see below) |
+| Placement | the realm map's own marker for each pickup, in the zone it plots it in, with the height the client recorded for it |
 | Rule | one open per character, then inert for that character and only that character |
 | Discovery | an unspent pickup sparkles for the character who can still loot it |
 
 Nothing is invented: every template field is a captured value, every loot row is the realm
 catalog's own row, and every position is an observed position.
+
+### The second pass: what the first one could not place
+
+The first pass placed each pickup **once**, at the single example position it holds, and only
+from the community's zone dumps - which cover the open world, one file per zone. That leaves
+three gaps, all three closed by `2026_09_22_00_worldforged_pickup_spawns.sql`:
+
+| | |
+| --- | --- |
+| Zones | one spawn per object, not one per object per zone: a pickup seen in nine zones stood in one |
+| Maps | seven pickups came from the two region dumps, whose map id is a fallback and was wrong; each is corrected to the Kalimdor zone dump that records the same object at the same coordinates |
+| Everything else | dungeons, mines, caves, starter sub-zones and TBC zones have no zone dump at all. The archive's pins reach inside them: a pin carries the object's own world XYZ and its map |
+| One object | the pickup holding `Adventurer's Lost Sack` (1450513) never existed - no catalog loot row, so nothing pointed at it. Its template comes from the client cache, field for field |
+
+Evidence for the second pass, and what it covers:
+
+* **5,147 CoA pins**, 4,159 of them on an item this restoration hands out. Before the second
+  pass 2,119 (51%) had a pickup within 30 yd; after it **4,154 (99.9%)** do. The five that
+  remain are each 30-44 yd from a spawn of the same object - the same pickup seen slightly off.
+* Where both corpora hold the same object they agree to a **median 27 yd**, so a pin with no
+  spawn within 30 yd is a position nothing else records.
+* Heights: a pin carries X and Y only. A pin takes the height of a dump row of the same
+  object within 60 yd when there is one, otherwise the height of the nearest object the realm
+  already has on that map (2,136 rows, none left without a neighbour).
+* No object is placed twice: a copy is added only where no spawn of the same object already
+  stands on that map within 30 yd.
+* `zoneId`/`areaId` stay `0` on both passes; the zone is recorded in the row's `Comment`, the
+  way the first pass records it.
+
+### The third pass: the items no object hands out
+
+The first two passes restore the pickups the realm's catalog knows - an object, the item its
+loot row names, and a position. An item that never got an object has no pickup at all,
+however often the community recorded it on the ground. Discounting the tiered copies of items
+already placed, **184 such items** remain, and every one of them is pinned on Conquest of
+Azeroth with the zone, the map and the position it was looted at. They are created by
+`2026_09_22_01_worldforged_missing_pickups.sql`:
+
+| | |
+| --- | --- |
+| Objects | 184 templates in their own entry range (1345000+), named after the item they hold, carrying the appearance the catalog records for that object where it has one and otherwise the appearance this restoration already gives an item of the same class and subclass, with the size and the lock every other pickup uses |
+| Loot | one row each, at 100%, the item and nothing else - none of those 184 items is in any creature loot, reference loot, vendor list or quest reward |
+| Spawns | 461, one per pinned zone, at the pin's own X/Y in the pin's own map, with the height of the nearest object the realm already has on that map |
+| Scrolls | the 14 `Worldforged Scroll:` items are included; the `Mystic Scroll:` family is deliberately not - it is a separate family with nothing tying it to a pickup object |
+
+### The fourth pass: the pickups recorded on the other realms
+
+The first three passes read the archive's pins through a filter that kept only the pins
+recorded on Conquest of Azeroth. Of the archive's 5,264 worldforged pins, 117 are not on a
+CoA realm but on Area 52, Darkmoon, Dawnrise or Bronzebeard - the same pickups, the same
+world coordinates, the same item ids, the same zones. `
+2026_09_22_02_worldforged_crossrealm_spawns.sql` closes what that filter cost:
+
+| | |
+| --- | --- |
+| Positions | 74 recorded positions on 67 pickups the realm already had, each one a place no spawn stands within 30 yd |
+| Objects | 2 pickups that are real templates in the client's gameobject cache and had no object at all: `254156 Ancient Furbolg Totem` (holds 354068 `Totem of the Vale`) and `254193 Broken Highborne Lamp` (holds 354096 `Light of the Highborne`). Both rows are the cache's own, field for field - type, display, size, lock and Data fields |
+| Effect | `Arkonite Orb` (254255) went from no position to its five recorded ones: Ammen Vale, Azuremyst Isle, Coldridge Pass, Dun Morogh and Elwynn Forest |
+
+What the four passes together could not place, and will not invent: **27 objects stand in the
+realm's catalog with a loot row and no position anywhere in the evidence** - 21 whose only
+recorded positions were never recorded at all, and 6 whose only recorded position lay in deep
+water and was removed by the fifth pass, below - no archive pin on
+any realm, no LootCollector sighting, no row in the community's zone dumps, no entry in the
+object catalogue, nothing in the client cache. They are named, they hold an item, and nothing
+records where they stood, so they are left as they are rather than moved to a guess.
+
+### The fifth pass: what each pickup looks like, and the ground it stands on
+
+Two defects the first four passes left behind, both fixed by
+`2026_09_22_03_worldforged_appearance_and_ground.sql`.
+
+**Appearance.** 381 of the 1,742 templates carried `displayId = 980926`, which the client's own
+`GameObjectDisplayInfo.dbc` resolves to `world\Generic\DOODADS\invisible_cube.mdx` - a
+placeholder. In the world such a pickup was a bare sparkle with no prop. Each of the 381 now
+shows a real model, taken from the archive's own captures and never invented:
+
+| | | |
+| --- | --- | --- |
+| 152 | the exact name | the model the realm uses for an object of that name (a crate, a sack, a corpse), at that captured row's size |
+| 76 | the prop word in the name | the model the realm uses for that word - a sack, a corpse, a ring, a totem, a fragment, a scrap, a bracer |
+| 139 | the item's kind | the model the realm's own visible pickups use for an item of the same class and subclass (a necklace, boots, a bag, a gun rack) |
+| 14 | neither | the treasure chest the realm uses for its containers (`259`, size 1.00) |
+
+Every chosen id resolves to a real model in the client's own table, none is the placeholder,
+no size falls outside 0.6-1.5, and the result uses 156 distinct models across the 381 objects.
+
+**Height.** A pickups' position was recorded as X and Y only: a pin marks where a player stood
+when the loot window opened. The first pass took its heights from the community's zone dumps,
+which record the object's own stored height - 26% of those are interiors or structures the
+terrain surface sits far above, so they are already right and are left exactly as they are.
+Every later pass derived its height from whatever object stood nearest on that map, which left
+1,465 of the 4,346 placements more than 10 yd off the ground - floating, or buried.
+
+First, **230 placements whose recorded position lies in deep water are removed**. A pin is a
+player's position when a loot window opened, and on those the pin's own coordinates land 50 to
+500 yd below sea level, in ocean, with a zone on the pin that is a different zone from where
+the coordinates fall - the position was never usable, and a pickup there was a sparkle over
+open water. 162 of the 168 objects involved keep their other placements; the remaining 6 keep
+none, as 21 already do.
+
+Each of the 2,606 remaining later placements now takes its height from:
+
+| | |
+| --- | --- |
+| 126 | a first-pass placement of the same object within 60 yd - the very row the second pass took its height from, so those heights are measured |
+| 843 | the closest object the realm itself placed within 25 yd: the terrain surface for 626 of them, the floor the object stands on for 217 (a mine, a cellar, a pier, a room) |
+| 1,571 | the terrain surface the worldserver itself reads (`maps/*.map`, the same `GridTerrainData::getHeight` call the core makes), where nothing is close enough to say |
+| 24 | the only floor the realm placed, where the map has no terrain surface at all |
+| 42 | unchanged: neither a surface nor anything nearby |
+
+2,264 of them move. The rule was measured, not assumed. Run against the 1,510 first-pass
+heights - the only independent ground truth in the data - it reproduces 67% within 2 yd and
+79% within 5 yd, better than the eight other variants tried, including "always the terrain
+surface" (64% and 74%). After the migration, the later placements sit a median 0.00 yd from
+the terrain where a surface exists, 89% within 2 yd, and the 7% that sit further out are the
+interiors and structures the floor rule deliberately keeps.
+
+### The sixth pass: the rows the realm's own occupants disagree with
+
+`2026_09_22_04_worldforged_ground_refine.sql` re-reads every one of the 4,116 placements
+against every occupant of the world - the 95,665 authored objects and the 194,914 creatures it
+has always had - and corrects the ones the fifth pass could not settle. 69 rows move:
+
+| | |
+| --- | --- |
+| 34 | three or more objects or creatures stand within 15 yd, agree with each other to within 20 yd, and their median differs from the row by more than 5 yd: the row takes that median, which is the floor of the room, cave or terrace the pickup was looted on |
+| 35 | nothing at all stands within 15 yd and the row hangs between 8 and 40 yd above the terrain: it floats in open air and takes the terrain |
+
+The rows that stand far from both the surface and any occupant and match neither rule are
+left exactly as recorded. Above a heightfield, a row more than 40 yd up is far more likely to
+be standing on a structure the surface cannot see - a tree-city, a pier, a canopy - than to
+hover, and a row below the terrain with nothing near it is what a cave, a mine or an
+undercroft looks like from above. Neither is moved on a guess.
+
+### The seventh pass: off the plane a map does not have
+
+`2026_09_22_05_worldforged_noheight_terrain.sql` deals with the rows that have no height of
+their own at all - and with a trap in the map files. A tile can carry one constant height for
+a whole grid instead of a surface (`MAP_HEIGHT_NO_HEIGHT`): `0` across an interior map such as
+Scarlet Monastery or Razorfen Downs, the `-500` sentinel on a continent grid with no terrain
+under it. The core uses that constant as a fallback, so a pickup parked on it still loads - it
+simply stands on a plane the map does not have, which is to say underground and out of sight.
+61 rows:
+
+| | |
+| --- | --- |
+| 43 | sat on such a plane - 39 of them in Scarlet Monastery, 2 in Shadowfang Keep, 1 in Razorfen Downs, 1 in Eversong Woods - and take back the height the pass that created them recorded |
+| 15 | were left at exactly `0`, the number a generator writes when nothing gave it a height, and take the terrain surface |
+| 2 | were left at exactly `0` and take the height their creating pass recorded |
+| 1 | a row the sixth pass moved to a height this reading does not support, put back |
+
+4 rows stay at `0` and cannot be helped: they are the Blackrock Caverns pickups, and that map
+has no tiles extracted in this repack and no creature or object of any kind standing on it, so
+nothing in the realm can say where its floor is. They are named here rather than moved to a
+guess.
+
+After all seven passes: **3,498 placements stand on the terrain, 255 on a floor the realm's own
+occupants define, and 363 are left with the height the data gives them - interiors, structures,
+and the four rows above.**
+
+### The appearance, checked against the client itself
+
+Every display id any pickup uses - **1,072 distinct ids** - was checked against the client's
+own `GameObjectDisplayInfo.dbc` and against the model file behind it in the client's archive
+chain (the tables name models `.mdx`, the archives hold them as `.m2`): **0 ids are unknown to
+the client and 0 resolve to a model that is not in the archives.** No pickup carries
+`displayId = 0` or the `980926` placeholder.
+
+### The eighth pass: the appearance and the places Ascension itself records
+
+The seven passes above filled the appearance from the shape of a name and from the item a
+pickup holds - reasoned guesses, and several of them were wrong in ways a player notices at
+the first click: a pair of bracers standing as a treasure chest, more than one object in the
+same zone wearing the same prop. This pass replaces every one of those with a record, and
+adds the placements the Exiles database documents. Two migrations:
+
+| File | What it settles |
+| --- | --- |
+| `2026_09_23_02_worldforged_appearance_records.sql` | the appearance of all 1,721 spawned objects - the final value, not a diff |
+| `2026_09_23_03_worldforged_positions.sql` | the heights, the facings, 142 placements no earlier migration defined, and 198 the community recorded looting |
+
+#### What was decoded for it
+
+| Corpus | Size | What it gives |
+| --- | --- | --- |
+| the client's own `gameobjectcache` | 74 distinct caches across the realms and modes, union **14,290 object definitions** | the server's own `SMSG_GAMEOBJECT_QUERY_RESPONSE`: entry, type, display, size, `Data[]`. All **167,507 records decoded consume exactly their declared record size**, so the field layout is proved rather than assumed |
+| the archive's `gameobject` collection | 174,539 rows | the same records, over more realms and capture dates |
+| the archive's `world-object` catalogue | **7,651 objects**, a display for 7,358, an example position for 7,626 | the community dumps, folded by object id - what the realm has, and one worked place for each |
+| Coin's GameObject dumps | 8,165 objects, 9,340 CSV rows and 26,151 TXT rows | a real map id plus the object's own position and stored height, and the DisplayId the dumper read |
+| the Exiles database | 1,688 of the 1,703 base items behind these objects | the item's AtlasLoot provenance - `Silithus (63, 56)` - and, where AtlasLoot names one, the object it is found at |
+
+The two independent display corpora agree wherever both describe the same object: **427 of
+428**. The one disagreement is `Sack of Defias Gear`, by a single id.
+
+#### The appearance, tier by tier
+
+An object is given an appearance only from a record of it or of something Ascension gives the
+same name. Where none exists it keeps the value it already ships, rather than taking another
+guess.
+
+| | | Tier |
+| --- | --- | --- |
+| 1,323 | the object's own record in the client cache | A |
+| 12 | the object's own record in the archive | B |
+| 134 | the dump catalogue's sighting of an object with that exact name | C |
+| 22 | another entry Ascension gives the same name, and that entry's own record | D |
+| 27 | the object the Exiles database names as the source of the item it drops, then C or D for it | E |
+| 203 | no record in any corpus: the value it already ships, unchanged | - |
+
+**60 objects change.** 23 of them were carrying a model a different zone also used, which is
+the visible half of the complaint: `Blackrock Armor Supplies` and eight others shared one crate,
+`Nightwatch Circlet` and `Stolen Rot Hide Circlet` shared one ring, and `Abandoned Supplies`,
+`Warmonger's Supplies` and `Dark Iron Supplies` shared a third. The Exiles tier is what names
+the props for the objects created in the third pass: `Duskwither Hatchet` is the `Ether-Touched
+Axe`, `Spellribbon Wand` is the `Disused Wand`, `Silt Shore Hammer` is the `Buried Hammer`,
+`Mystwood Glaive` is the `Flowering Glaive`.
+
+Scale follows the object's *own* record only, and only where the stated scale is one an object
+can be drawn at (0.2 to 5.0): a same-named neighbour's scale describes a different prop, and
+the dump catalogue carries values such as 0.04 which would render a pickup invisible.
+
+**The 203 with no record are named in `.scratch` evidence, not here**: they are objects whose
+name exists in no client cache, no archive collection and no dump, so no source can say how
+Ascension drew them. They keep the appearance the earlier passes gave them.
+
+#### The places
+
+The Exiles database publishes, for the base item behind each object, the zone and map position
+AtlasLoot records. Read as server coordinates through the client's own `WorldMapArea` bounds
+(the reader reproduces the realm's own reference point - item 132418 in Razorfen Kraul at map
+(0.1273, 0.3504) is `2178.0, 1965.2`, which the realm's pins independently measured):
+
+* **1,202 objects already stand within 25 yd of it, and 1,430 within 60 yd** - the positions
+the captures found are the positions Ascension documents, which is why most of them do not
+move.
+* **142 objects have no placement within 60 yd** of it on that map, and gain one there. This
+is additive: nothing is moved and nothing is removed, so no place a capture recorded is lost.
+These 142 had been written straight into the database by an earlier pass and had no migration
+behind them; the file now carries them, so a fresh database has them too.
+
+#### The places the community recorded looting at
+
+The realm's loot records hold **7,156 positions** across its realms and modes, for 2,537 of the
+items behind these objects. A pin is where the looter stood, so one a few yards from a
+placement that already exists says nothing and is left out; where the restoration has the
+object nowhere on that map, or nothing within 150 yd of the pin, the pin becomes a placement -
+**198 added**, of which 49 are in Un'Goro Crater, 30 in Maraudon, 17 in Gnomeregan, 14 in
+Wailing Caverns, 11 in Molten Core and 10 in Magisters' Terrace. Additive: nothing is moved and
+nothing is removed.
+
+#### The heights, and what a height may be taken from
+
+A community loot pin records where a player stood - X and Y only, no height at all. So does an
+AtlasLoot coordinate. Every added placement therefore takes its height from what a player
+actually meets at that spot, in order: the median height of the realm's own occupants
+(creatures and objects already spawned) within 80 yd, then within 200 yd, then the terrain
+surface the worldserver itself reads, then a realm dump of that same object nearby - a
+collector's eye level, the weakest of these for a placement. **No witness at all means no
+placement is added: 17 of the 238 recorded positions are left out for that reason and are
+named in the evidence rather than stood on a guess.**
+
+Two findings about the terrain, both of which had produced pickups a player could see were
+wrong:
+
+* this map set has tiles the converter never filled, and they carry a stand-in height with no
+  flag to mark them - `-500` on the continents. Read as ground, that is how a pickup ends up a
+  few hundred yards under the world. A tile whose value is that stand-in is now reported as
+  unknown instead.
+* where the extract's own surface disagrees with everything the realm has within 200 yd of it
+  by more than 40 yd, the extract is the one that is wrong (Blackrock Mountain reads 782 where
+  its occupants stand at 172 to 286; the Ebon Hold floats 250 yd over the Eastern Plaguelands,
+  so a height nothing local shares is the tell). **90 placements were standing on nothing** -
+  no prop or creature within 80 yd within 60 yd of their height - and now take the floor their
+  neighbours share.
+
+#### The facing
+
+The first pass wrote the orientation each placement was recorded with. The ones added later
+carried none, which draws them all facing north. Where another placement of the same object
+carries a recorded orientation, it is copied along with its quaternion: **401 placements gain a
+facing**, and the 12 whose object has no other placement keep what they had.
+
+#### How the numbers were checked
+
+* the terrain reader against a recorded height: the dump catalogue puts `Old Lion Statue` at
+  `-9253.08, -3404.90, 104.348`; the reader returns `105.52` for that spot. Its axis order is
+  validated against the realm's own authored spawns: 1,216 sampled objects land within 2 yd of
+  the reader's surface at the median, and the transposed reading is 104 yd out.
+* the appearance statement is the *final* value for all 1,721 spawned objects, so a fresh
+  database and this one cannot diverge however the earlier migrations are re-run.
+* the worldserver boot after the migrations reads `Loaded 101092 Gameobjects` against
+  `SELECT COUNT(*) FROM gameobject` returning `101092` - every row, including all 198 new ones.
+* the module's own placements when the file is applied: **4,464**, of which 4,452 carry a
+  facing, and 0 left at the stand-in height or at zero.
+* `apps/coa-gameplay-test/scenarios/worldforged-pickups.json` - 82 steps, 35 assertions,
+  passed.
+
+### The ninth pass: one placement where the restoration put two
+
+`2026_09_23_04_worldforged_duplicates.sql` removes 262 placements that were each the same
+object, or the same item, standing twice. Every one of them was made by a pass above, and
+all three causes lie in the data those passes used rather than in how they read it.
+
+| # | What was doubled | Rows | Why it happened |
+| --- | --- | --- | --- |
+| 1 | one object standing twice: the same entry, on the same map, within 60 yd of itself | 185 | the two corpora that recorded these objects hold the same placement and agree to a **median of 27 yd** - one carries the object's own stored XYZ, the other a position read off a zone chart - and the passes separated positions at **30 yd**. Most objects the second corpus saw a second time were therefore placed a second time |
+| 2 | one item offered by two objects: two entries whose loot is the same item within 60 yd | 32 | a pin names the *item* its looter picked up, never the object it came from. Where Ascension defined two objects that hand out one item - an entry whose client record is the invisible placeholder, and the prop a player sees - a pin of that item fits both, and both were placed on it |
+| 3 | a position from another season: a row whose only evidence names Area 52, Bronzebeard, Darkmoon or Dawnrise | 45 | every one of these names another realm rather than Conquest of Azeroth |
+
+Which row survives where one object stands twice, best evidence first:
+
+1. the spot a player was recorded looting at - a pin, and among pins the one the most people
+   recorded;
+2. else the object's own catalogue position;
+3. else, for one item held by two objects, the entry whose own record is a real prop, then
+   the variant the realm has most of.
+
+Two spots the community recorded *more than once each* 30 to 60 yd apart are left alone:
+those are two spawns, not one placement seen twice. Six such object pairs stay.
+
+Nothing here takes an item out of the world. A row is spared where it is the last placement
+of the item it holds - one row. A second object may lose every placement of its own where the
+object kept hands out the same item: seven entries end that way, and the item each holds is
+still found, through the object that stands. The rows kept keep their position, height and
+facing exactly as the eighth pass left them. The 26 rows this file removes that the eighth
+pass stated as its own block `b` are also taken out of that insert, so a fresh database never
+creates them.
+
+#### How the numbers were checked
+
+* before the file: 4,456 pickups - the 4,464 of the eighth pass counted 8 starting-zone
+  mailboxes that share the same guid block; after it: **4,194 placements, 1,714 objects
+  standing, 30 maps, 4,182 of them with a facing**.
+* no item loses its last carrier: the one row that would have was spared.
+* no object stands twice: the only pairs within 60 yd are the six community-recorded ones
+  above, 12 rows in all.
+* every surviving row still resolves its template, and none is left on the invisible
+  placeholder (`0 displayless, 0 templates missing`).
+* the leftover gaps are not from this file: **21 objects were never spawned by any pass**, so
+  their 21 items (the Azuremyst, Bloodmyst and Eversong starter pickups, `Farmstead Carver`
+  among them) still stand nowhere; and four placements - all in Blackrock Caverns, map 645 -
+  carry no height and stand at 0.
+* the worldserver boot after the file reads the same row count, and
+  `apps/coa-gameplay-test/scenarios/worldforged-pickups.json` passes.
+
+### The tenth pass: the realm's own map, and nothing else
+
+`2026_09_23_05_worldforged_map.sql` makes the world stand exactly what the realm map records.
+Every pass above placed a pickup wherever any single record put it - one per recorded position,
+per realm, per zone dump, per loot pin - which is why one object could be found several times in
+a zone and why some stood where the realm never had them. This file clears every spawn of a
+`worldforged_pickup` template and stands its own set as the whole of what remains:
+**2,480 placements over 76 zones, 1,576 pickup objects, four continent maps**.
+
+| The value | Where it comes from |
+| --- | --- |
+| which pickup | the map's own name. The realm names a pickup after the item it holds, so the name is usually both; where the name is a prop (`Old Grave`, `Waterlogged Chest`, `Black Powder Barrel`) the realm has an object of precisely that name, and its loot row names the item, so it is the object the map means. |
+| position | the map's marker, converted to world coordinates through each zone's own world rectangle. Against the archive's loot pins - recorded world positions for the same item in the same zone - the conversion agrees to a **median of 2.5 yd over 1,872 markers**. |
+| height | never invented. In order of use: the height the pickup already stands at in this world; the height the client recorded for that object at that spot; the floor the realm's own occupants stand on within 70 yd - a marker's coordinate carries a few yards of slack, and a few yards sideways on a slope is tens of yards of height; the floor the pickups around it share; and only where the realm has put nothing at all, the server's own terrain, read exactly as the core reads it. **45 markers whose height nothing in the realm states are left unplaced**, named at the end of the file rather than stood on a guess. |
+| template | a pickup the realm already has keeps its own entry and appearance, untouched. A name the realm has no pickup for is not placed. |
+
+A marker that pairs with a mystic scroll at the same spot is a scroll source and is left out:
+scrolls are not part of this restoration.
+
+`2026_09_23_06_worldforged_recorded_heights.sql` then stands **278 pickups on the height the
+client itself recorded them at** - its own dumps are sightings of an object, its map and the
+world XYZ the client saw it at - wherever that sighting is within 12 yd of the placement. A
+pickup inside a mine or on a tower balcony is under, or over, the surface the terrain reader
+can see, so the recording is the only one of the two that is true. The same file adds the zone's
+two objects the realm had never had, from the realm's own client-cache records: Elwynn's
+**Brother's Cherry Pie** (90634, the invisible chest that hands out Brother Danil's Cherry Pie,
+with the visible Cherry Pie prop - display 5493 - beside it, as at every other starter-zone pie)
+and the **Bloodied Axe** (93008, a chest whose own appearance is the axe, display 175455) at
+both spots the client recorded it: Duskwood/Elwynn and Thousand Needles.
+
+`2026_09_23_07_worldforged_spare_spawns.sql` removes **eight placements that are a second
+placing of an object the map records elsewhere**, four of them left hanging high on a hillside:
+the Crystallized Shield, Gareks Personal Belongings, the Tattered Goblin Cargo Sack, the Ancient
+Relic, the Glinting Silt-Encrusted Necklace, the Shoulderguards of the Ancient Prophet, the
+Cursed Branch and The Rock Binder. Every one of the eight already stands at exactly the spot the
+map records for it, and after this file it stands nowhere else.
+
+#### The zone checked end to end against the map
+
+Elwynn Forest - with Northshire, which `AreaTable` parents to nothing of its own, so the zone is
+two area trees - is the first zone verified row by row against the map:
+
+* **71 of 71** markers on the zone's page stand, none is missing, and the only rows the page
+does not account for are six that sit at **exactly 0.0 yd** from a marker the map files under a
+neighbouring zone page (Westfall, the Burning Steppes). There the zone's label differs from the
+server's own area table; the placement does not.
+* **68 worldforge pickups** stand in the zone, 1 visible companion prop among them.
+* every template standing in the zone resolves its display in the client's own patched
+`GameObjectDisplayInfo.dbc`; the only invisible-placeholder display is the pie chest above, by
+design, with the visible pie prop beside it.
+* six rows stand more than 6 yd from the terrain reader's surface - two mine floors (Echo Ridge
+Mine's shovel, and the kobold corpse among the realm's own copper veins), the Tower of Azora's
+upper room, the Ridgepoint Tower balcony and two interiors. Each stands at the height the
+client itself recorded: a mine floor or a tower floor is under, or over, the surface the terrain
+reader can see. Nothing is buried under the ground a player walks on and nothing floats without
+a record.
+
+#### How the numbers were checked
+
+* before the tenth pass: 4,194 placements; after it: **2,480 placements, 1,576 objects, four
+  continent maps**, and after the two files that follow it **2,475 placements standing**. The
+  worldserver's boot reads 99,112 gameobjects, four fewer than before the eight removals.
+* no item loses its last carrier: every object the eight removed rows belonged to still stands
+  elsewhere, at the spot the map records for it.
+* the map's own Elwynn page: 71 markers listed, 71 standing, 0 missing.
+* the pickups that stand at the height the client recorded them at were checked one by one
+  against the recording: each within 12 yd of its own sighting, none standing on an invented
+  height.
+
+### The eleventh pass: Westfall, paired marker by marker
+
+`2026_09_23_08_worldforged_westfall.sql` is the second zone taken end to end against the map, and
+the first that pairs rather than compares. Every marker on the zone's page is matched with a
+pickup of the same object, one marker to one pickup, greedily by nearest standing; then a paired
+pickup more than half a yard off its marker is moved onto it, and a pickup that pairs with no
+marker of any page is a stray placing and is removed.
+
+* **123 of 136** markers stand. The 13 that do not are accounted for, not missing: seven are the
+  realm's book/scroll/crystal fixtures (Ancient Priest Tome, Light and Shadow Vol: 1, Scroll of
+  Curses, Arcane Crystal, Unlit Twilight Candle, Evil Chest, Whispering Book) and six are
+  `Worldforge Drops (N items)` **cluster labels**, not placements - three sit on Saldean's Farm
+  and two of those label the same two drops, the rest at spots where nothing in the realm stands
+  within 60 yd. The fixtures' objects are in the realm's own dump with their displays, but their
+  loot tables exist in no source held here, so nothing is invented for them. No marker with a
+  real object behind it was lacking a pickup.
+* **nine pickups moved onto their markers**, the furthest 15.6 yd (Sharp Bone Necklace, Raven
+  Hill Cemetery), the rest 1.3 to 5.4 yd. Heights: the pickup's own height where the move is
+  short, else the client's recording for that object at that spot, else the realm's own recorded
+  height when the ground agrees, else the floor the realm's own occupants share, else the
+  server's terrain.
+* **two strays removed** - the Misplaced Pitchfork at Jangolode Mine and the Quarry Sledge at
+  the Gold Coast Quarry, each a second placing of an object that already stands at every spot
+  the map records for it.
+* **two markers are one placement recorded twice**: the map files Rower's Jerkin and Madness
+  Cursed Notes on the Westfall page *and* a neighbour's, with coordinates 12 and 18 yd apart,
+  while the realm's own record agrees with the neighbour's. The recorded spot is kept, and the
+  file says so at the row rather than hiding it.
+* one height was rejected on the way: the realm's own record for Sharp Bone Necklace says 1.8,
+  but that is 31 yd under the ground the rest of Raven Hill Cemetery stands on and no source
+  carries its x/y, so the marker takes the server's own terrain (33.34) instead.
+
+#### How the numbers were checked
+
+* the map's Westfall page: 136 markers listed, 123 standing on a pickup of their own object,
+  13 accounted for above, **0 missing**.
+* pickups in the zone that stand on no marker anywhere: **0**; the two that did before the pass
+  are the removals above.
+* each of the nine moved rows was read back from the live database after the file ran: marker
+  coordinates to the decimal, none more than 6 yd from the ground it stands on except where the
+  client's own recording for that object says otherwise (People's Militia Stolen Badge, seen at
+  40.3 within a yard of the marker, in a hollow the terrain reader reads as 52.5).
+* the worldserver applies the file on boot (`Applying update "2026_09_23_08_worldforged_westfall.sql"`)
+  and reads **99,109 gameobjects**, two fewer than before the removals.
+
+### The twelfth pass: Duskwood, paired marker by marker
+
+`2026_09_23_09_worldforged_duskwood.sql`. The zone's page lists **50 markers**: **44 real
+placements**, four fixtures whose objects and loot tables exist in no source held (Omen of Doom,
+Whispering Book, Arcane Crystal, Scroll of Curses - the realm's scroll family, left alone), one
+`Worldforge Drops` cluster label, and one chest the map names after the item it is, `Discarded
+Junk`, which this world carries as the object Haren's Tankard (entry 1345067, display 184947,
+standing 0.0 yd from that marker).
+
+* **35 of the 44 placements already stood**; the other **nine** are placements the map records on
+  two of its own pages 3.5 to 15.6 yd apart (Darkest Night Loop, Raven Hill Backscratcher, Honed
+  Steel Axe, Ruby Skeletal Ring, Venom Sample, The Jitters, Nightshot, Vul'Gol Torch, Poisoned
+  Pendant). In each case the pickup already stands on the neighbouring page's copy at the spot
+  the realm itself recorded, so nothing moved and the file says so at the row.
+* **two pickups moved onto their markers** - Murloc Voodoo Toy 10.1 yd and Dark Scythe 13.0 yd.
+* **nothing removed**: six of the zone's objects have two spawns, and all twelve spots stand 0.0 yd
+  on a marker of their own name (the map lists the object-name label and the item-name label as
+  two separate placements, e.g. Casket Will / Will in the Casket 1,032 yd apart).
+* pickups in the zone that stand on no marker anywhere: **0**. The worldserver applies the file on
+  boot (`Applying update "2026_09_23_09_worldforged_duskwood.sql"`).
+
+### The thirteenth pass: Stranglethorn Vale, paired marker by marker
+
+`2026_09_23_10_worldforged_stranglethorn_vale.sql`. The zone's page lists **98 markers**: **90
+real placements**, four scroll chests (Priestess Cache, Beating Heart, Armed Trap, Mysterious
+Pirate Cache - objects the realm had, whose loot is a Mystic Scroll, left out like the rest of
+that family), three markers that name nothing in this world (Mysterious Cauldron, Demonic Skull,
+Skull Crusher - the last likewise a chest handing out Mystic Scroll: Skull Crusher), and one
+cluster label.
+
+* **89 of the 90 placements already stood**, including Gregan Tanning Rack, which serves the
+  marker the map names *Thunder Fur Cloak* after the item it hands out (0.0 yd, archive loot pin
+  2.6 yd away, 8 records).
+* **one pickup moved**: Ancient Sea-dweller Charm, 14,719.9 yd off its marker. The realm's own
+  sightings of that chest put it 20.9 yd from the marker at a recorded height 9 yd above the sea
+  floor the terrain reader finds there, so the marker takes the terrain; the archive's own loot
+  pin for the item (9 records across six realms) sits 4.7 yd from that marker.
+* **one stray removed**: a second Rugged Leather Runners at -11338.2 -268.2, 22.8 yd from the
+  single placing the realm recorded for that object (height 47.7) and with no marker of its name
+  anywhere on the map. The surviving spawn matches the realm's record exactly.
+* four rows sit inside caves (Mai'Zoth's Artifact, The Ironjaw, Kurzen Eviscerator, Stonesplitter)
+  where the terrain reader sees the surface 100 to 186 yd above them; each matches the realm's own
+  recorded height for that object to the decimal, so they stay.
+* the worldserver applies the file on boot
+  (`Applying update "2026_09_23_10_worldforged_stranglethorn_vale.sql"`) and reads **99,108
+  gameobjects**, one fewer than before the removal.
+
+### The fourteenth pass: Deadwind Pass, paired marker by marker
+
+`2026_09_23_11_worldforged_deadwind_pass.sql` holds **no statements**: this zone needed no change,
+and the file exists so the check has a record beside every other zone's. The page lists **41
+markers**:
+
+* **37 real placements**. 36 stand 0.0 yd on them. The 37th, **Betrayal's Edge**, is one placement
+the map records twice - on its Duskwood page as 'Dark Scythe' (-10452.2 -1720.3) and on its
+Deadwind page as 'Betrayal's Edge' (-10449.5 -1733.0), 13 yd apart. The realm's own sightings of
+that chest (entry 254494, -10452.6 -1719.7 at height 85.8, seen twice, tagged Duskwood) agree with
+the spot the pickup stands on, so nothing moved.
+* **two fixtures** whose objects this world and the realm's records both have, but whose loot
+tables exist in no source held: Lost Tome (100049, display 430) and Old Book (254512/254513/254514,
+displays 8128/8133/60737), chests the realm itself saw in DeadwindPass. Nothing is invented.
+* **one scroll chest**: Mysterious Goblet (2180754, display 565), whose archive loot pin 1.9 yd away
+names Mystic Scroll: Divine Symmetry - left out with the rest of that family.
+* **one cluster label**, `Worldforge Drops (3 items)`.
+
+Three of the page's markers are served by pickups the world's own area data files next door, so
+their rows live on that zone's sheet - Bloodied Gauntlets (Blasted Lands), Lifesap Blade
+(Duskwood), Furbolg War Drum (which the world does call Deadwind Pass). All three stand 0.0 yd on
+the marker. Six rows read 9 to 157 yd from the terrain reader's surface because they sit inside
+Karazhan's cellars and crypts; each matches the realm's recorded height for that object to the
+decimal, so they stay.
+
+### The fifteenth pass: Blasted Lands, paired marker by marker
+
+`2026_09_23_12_worldforged_blasted_lands.sql` holds **no statements**: this zone needed no change,
+and the file exists so the check has a record beside every other zone's. The page lists **71
+markers**:
+
+* **65 real placements**. 64 stand 0.0 to 2 yd on them. The 65th, **Nethergarde Mining Cap**, is one
+placement the map records twice - on its Swamp of Sorrows page 9.5 yd from its Blasted Lands page -
+and the realm's own record for that object agrees with the spot the pickup stands on (10.1 yd from
+the Blasted Lands marker, 0.9 yd from the realm's record), so nothing moved.
+* **three objects the realm has and this world does not**: Hanging Ogre Scraps (518081, display
+254263), Monolith of Earth (660405, display 1018549) and Charred Staff (518029, display 188424). The
+realm's own sightings place all three in the Badlands and nowhere else, and the page lists the first
+two at the very same top/left its Badlands page uses, so no pickup is invented for them here. Their
+Badlands placements stand and are served there.
+* **two names no source held knows**: Capacitor Totem and Arrow of Binding. Neither object, item nor
+pin exists under either name.
+* **one cluster label**, `Worldforge Drops (2 items)`.
+
+Every one of the zone's **57 pickups** stands within 3 yd of a marker of its own object name or of
+the item it hands out, so nothing here is a stray, and no marker of the page is left without the
+object it names. Their appearance is a record: 52 carry the entry's own record from the realm's
+client cache, and the five whose record there is the invisible placeholder cube (Blood Covered
+Metal, Extra Crate, Spark of Infernus, Venture Co. Ring, Vulture Effigy) carry the same-name
+counterpart the eighth pass resolved, not a placeholder. Ten rows read 8 to 152 yd from the terrain
+reader's surface and every one is explained: five sit on the floor of the mine tunnels under the
+zone (Shining Wand, Forgotten Flower, Marsh Bonebreaker, Swamp Talker's Crossbow, Shadowsworn Staff
+- Mithril, Gold, Truesilver and Thorium deposits share those heights to under a yard within 25 yd),
+one stands 28 yd above the ground on the deck of the Necropolis that shares its height to 0.1 yd
+(Charred Slicer), and four are interiors whose height is the realm's own record for that object
+(Discharged Sawblade, Blood-soaked Bag, Sacrificial Knife, Mojo's Chest).
+
+One property of the realm map is worth recording here, because it explains rows in this zone that
+would otherwise look like duplicates. The map lists **202 of its markers on two zone pages with the
+same top/left on both**, so each page projects its own world spot for them. **Twenty-four** of this
+zone's pickups are that second listing - an object whose other listing stands in the Badlands some
+5,000 yd east (17 of them: Ancient Relic, Ancient Wand, Awkwardly Placed Hammer, Barbarian King's
+Circlet, Blood Covered Helm, Blood Covered Metal, Extra Crate, Gareks Personal Belongings, Lit
+Lantern, Ogre Fire Poker, Scorched Knife, Shadowforge Shotgun, Shadowforged Deflector, Spark of
+Infernus, Tattered Sack, Throkaf's Project, Windhorn Longbow), across the Deadwind Pass border about
+1,300 yd north (4: Forgotten Flower, Intact Boots, Fallen Hero's Shield, Shining Wand), or in
+Mulgore, the Western Plaguelands and Teldrassil (Venture Co. Ring, Charred Slicer, Vulture Effigy).
+The realm's own loot pins corroborate one of the two spots in each of those 24 cases; the map plots
+both, so both stand, and nothing is moved or removed on the strength of the other. The twenty-fifth
+pickup the realm's records do not corroborate, Unloaded Shipment, has a second spawn in the Moonlit
+Ossuary that no record corroborates either; it stands as well, because the page plots it.
+
+### The twentieth pass: Searing Gorge, paired marker by marker
+
+`2026_09_23_19_worldforged_searing_gorge.sql`. The zone's page lists **56 markers**, and 54 of
+them stand in the zone's own twelve areas (Searing Gorge and its children, down to the Cauldron,
+Grimesilt Dig Site, Dustfire Valley and Blackrock Mountain). The other two project into the
+neighbouring areas their own positions fall in - Blackbreach Handaxe into Blackrock Stronghold,
+Defias Special Bucket into the Burning Steppes - and the world's own pickups already stand exactly
+on the page's plots for them (6940122 at -7527.5 -1270.6, 6940346 at -7421.8 -1415.7), so the
+passes for those areas keep them and nothing here touches them. With the markers a neighbour's
+page files inside the same areas, the pass judges **59 placements**; the zone holds **55 pickups**,
+every one of its own object with its own loot row.
+
+* **four chests the map lists twice**, once by the item the pickup hands out and once by the
+  object it is, each pair on this zone's page and a neighbour's:
+  * **Incendiosaur Bone String** (this page) and **Pile of Bones** (Dun Morogh page), 3.4 yd apart;
+  * **Dark Iron Legplates** (this page) and **Dwarf Corpse** (Dun Morogh page), 3.4 yd apart;
+  * **Dark Iron Wristbands** (this page) and **Broken Chain** (Dun Morogh page), 4.7 yd apart;
+  * **Taskmaster's Blade** (this page, the object's listing) and the item it hands out,
+    **Searsteel Claymore** (Blackrock Mountain page), 4.1 yd apart.
+
+  In all four the realm's own record for the object agrees with the object's listing - 1.5, 0.8,
+  1.7 and 0.3 yd - and stands 3.9 to 4.5 yd from the item's, so the pickup stands on the object's
+  listing and the item's is the map's redrawing of it, the reading the Westfall pass took for its
+  two such markers. **Three pickups move** onto those object listings, each keeping the height it
+  already stood at: Pile of Bones (3.4 yd), Dwarf Corpse (3.4 yd) and Taskmaster's Blade (4.3 yd).
+  **One is kept where it stands**: Dark Iron Wristbands' pickup (6940190, the object Broken Chain)
+  already stands 4.7 yd from the item's listing and 0.0 yd from the object's.
+* **four objects this world never carried are restored field for field** - entry, type, display,
+  size and data - each on the spot the realm's own client saw it, and each keeping the loot-table
+  id its own record names:
+  * **Incendiary Ammo Cache** (1344096, display 300027, guid 6942486, 0.6 yd), at the height the
+    client saw it (196.0, the floor the realm's own props in that cave share - the ore veins at
+    196.6 and the Dented Footlocker at 194.7, under terrain the map reader puts 46 yd above them).
+    No item of its name exists in any source held, so no loot row is written for it.
+  * **Ripped Diary Page** (90449, display 1015781, guid 6942487, 0.5 yd), which is the name of the
+    item it hands out and takes that loot row (item 1029571, 100%).
+  * **Mysterious Orb** (90044, display 515667 - the orb the client draws - size 0.9, cast bar
+    'Consuming', guid 6942488, 0.8 yd).
+  * **Volatile Lava** (518367, display 980926 - the client's `invisible_cube`, the placeholder the
+    realm used for hidden interactive chests - guid 6942489, 0.4 yd). Its display is the only
+    placeholder in the zone, and it is what the realm's own record says stands there; nothing
+    visible stands within 25 yd of it in the realm's sightings (the nearest is the Stone Anvil
+    22 yd off, which this world already carries), so no visible prop is restored beside it.
+
+  The first two the pass reached through the client-cache corpus it reads. The last two that corpus
+  does not carry at all, and their records are the realm's own archive for the entry instead:
+  Mysterious Orb's fetched from the part the archive index names, Volatile Lava's from the capture
+  kept beside it. Nothing is guessed: every field is a value one of those records states.
+
+**How the numbers were checked.** 55 of the 59 placements stand within 3 yd of a pickup of their
+object, and the four that do not are exactly the item's listings of the chests listed twice, 3.4 to
+4.7 yd off on the redrawing. **No marker is left with nothing behind it, and no pickup standing in
+the zone honours no marker of any page** - so nothing was removed and nothing else was added. The
+two objects restored from the archive's own record are the only rows in the file that do not come
+from a client-cache capture, and both the archive's captures and the realm's own sightings place
+them within a yard of their markers (0.8 and 0.4 yd). Fourteen of the zone's rows read 6 yd or more
+from the terrain the worldserver reads: thirteen carry the realm's own recorded height for that
+object, agreeing to 0.2-6.8 yd (the deepest is Pile of Bones, 223.8 yd below the surface at 129.7,
+which is exactly the realm's own recorded height for it), and the fourteenth, the Steam Pressure
+Totem (233.7), stands at the height the realm's own props share - the Twilight Crystal Bases read
+233.2 to 235.2 within a yard of it.
+
+The worldserver applies the file on boot and reads **99,124 gameobjects** and **2,486 worldforged
+pickups**, four spawns more than before the pass and two objects among them this world had never
+carried.
+
+### The placements and rotations authored in game: Elwynn Forest
+
+`2026_09_23_18_worldforged_authored_in_game.sql` is not a map pass: every row in it was authored
+by hand in the map editor (Noggit, against the client's own data), which writes one changeset per
+save. The forty-three changesets of the two editing projects are read in the order they were
+written, the last write to a row winning, and the migration is what they say, digit for digit:
+**39 rows moved and/or turned, and 5 placements added**. A save covers the whole selection, so most
+of those 39 rows arrive as the editor already had them; what the editor actually changed in Elwynn
+is **4 rows moved** - Old Buckler 211.62 yd, Appropriated Goods 99.55 yd out of the hole it had
+been buried in, Riverpaw Pack Chieftain's Lunch 18.02 yd and Dryad's Bow 6.40 yd - and **4 rows
+turned** (the same four, by 0.51, 0.06, 1.06 and 0.40 rad). The orientation column is written as the
+yaw the quaternion represents, which is what the model is drawn with - the editor's own column
+disagreed with its quaternion on two rows (Apprentice Staff and the Cherry Pie prop) and the
+quaternion is the one written.
+
+* **two rows were rejected as copies of a neighbour's record.** A save writes every row it touched,
+  including ones the editor never moved, and when two objects go into one save the editor can write
+a row with the *other* object's loaded coordinates verbatim. Old Buckler's row (6940412) arrived
+holding the buried spot (z -74.86) Appropriated Goods had just vacated, 1,096 yd away; Lookout
+Scope's (6940712) arrived holding Old Buckler's own live spot. Both are exact to the centimetre,
+which is how a copy shows itself, and both rows are left at their own value: Old Buckler stands at
+the spot its author saved for it in the previous save (-9558.30, -1416.90, 101.10), Lookout Scope
+where it already stood. Nothing is placed underground by this file.
+
+* **five placements added**, each keeping the loot row its object already had: Morale Boosters
+  (95692, guid 6960005, Party Pants), Scorched Tome (520063, guids 6960006 and 6960007, Forsaken
+  Tome), Rock Smasher (95655, guid 6960008, Barrel Smasher) and Glinting Kobold Corpse (90223, guid
+  6960009, Mother's Loose Fang). The editor wrote the same Scorched Tome placement twice in one
+  changeset; one row is placed.
+* **the rows that are not this module's are left alone** and named in the file: a Campfire (guid
+  26867) and James' Journal (guid 27022), both the world's own objects, moved a few inches or turned
+  a full circle by a stray selection.
+* **the interiors keep the editor's heights** - Appropriated Goods is out of its hole and stands
+  above ground (70.83), while Glinting Kobold Corpse, Worn Shovel and Deepmoss Fang are where the
+  editor left them in the Jasperlode and Echo Ridge workings, on the mine floor rather than on the
+  surface the terrain reader describes.
+* **the realm map's marker checks in the passes above describe where those rows stood before.** The
+  authored rows carry the authored position, and where that differs from the map's own marker the
+  file says so row by row.
+
+Every statement is an UPDATE on a guid or a REPLACE on a guid the file allocates, so it is safe to
+re-run, and the rows' earlier Comments are kept, with the authored-in-game note appended once.
+
+### The final authored pass: Elwynn Forest and Northshire, item by item
+
+`2026_09_24_20_worldforged_authored_in_game_final.sql` is the same reading as the Elwynn authored
+section above, over a later and larger set of saves: **72 changesets** from the two editing
+projects (`pro`'s eight and `pro2`'s sixty-four), read in the order they were written, the last
+write to a row winning. This is the pass in which every Elwynn and Northshire item was walked,
+repositioned and realigned, so it supersedes the earlier authored file's values for the rows it
+touches.
+
+* **60 rows of this module were moved and/or turned.** Most arrive as the editor already had them
+  - a save writes the whole selection - and **twenty-three actually moved more than half a yard**,
+  the furthest Ziz's Alchemy Goggles by 638.19 yd, then Timbermaw Defender 380.92, Chocked Fish
+  Corpse 243.14, Gore Covered Bow 235.35 and Overseer's Axe 180.40 yd. Position and the rotation
+  quaternion are the editor's own, digit for digit, and the orientation column is written as the
+  yaw that quaternion represents; where the editor's own orientation column disagreed with it the
+  quaternion is the one written and the file says so at the row.
+* **5 rows were removed**, each a duplicate or the item's own listing standing beside the
+  object's: Lost Shipment's old placing (6940243, -9490.0 251.1 53.9, re-placed on a fresh guid
+  in the same save), The Wanderer's Stirring Rod (6941224, -9446.4 526.8 56.2), Thunder Falls
+  Finest Gun Selection's duplicate (6941243, -9304.9 563.4 87.6, while 6941240 keeps the chest),
+  and the two extra placements the earlier authored pass had made in Echo Ridge Mine: Scorched
+  Tome (6960006) and Glinting Kobold Corpse (6960009).
+* **one of the deletes was not a removal at all.** `spawns_20260924_094425.sql` clears guid
+  6940160 and writes nothing else - the shape a changeset has when a save carries no rewrite -
+  and the object (Homer's Boar Harvester, at the Stonefield Farm) was never taken out of the
+  map. `2026_09_24_21_worldforged_boar_harvester_restored.sql` stands it back on the last row
+  the editor authored for it (`spawns_20260924_094300.sql`: moved 3.48 yd, turned 1.043 rad),
+  field for field, template and loot row untouched.
+
+* **5 placements stand for this module after this pass**, each keeping the loot row its object
+  always had: Morale Boosters (95692, guid 6960005, Party Pants), Scorched Tome (520063, guid
+  6960007, Forsaken Tome) and Rock Smasher (95655, guid 6960008, Barrel Smasher) - the three the
+  earlier authored file stands that the editor kept - plus two the editor placed in this pass,
+  **Lost Shipment** (97108, guid 6960010, the chest that hands out Charred Spaulders, re-placed
+  where the editor moved it) and the **Gypsy Wagon** prop (178666, guid 6960011) it stands beside
+  the Traveler's Forest Cloak at Jerod's Landing, which is a prop and hands out nothing, like the
+  Cherry Pie prop in Northshire.
+* **the two rows that are not this module's are left alone** and named in the file: a Campfire
+  (guid 26867) and James' Journal (guid 27022), the world's own objects.
+
+`2026_09_24_22_worldforged_removed_by_hand.sql` then honours the last thing the pass left open:
+walking the sheets row by row, the realm's author deleted three rows, and one of the three was a
+placement no authored save had touched. **Loose Stone, guid 6940971** (-10006.6 321.8) - the object
+that hands out Robe of Woven Dreams, standing on the Westfall side of the border the realm map files
+under its Westfall page while the server's own area table calls the spot the Stonefield Farm, which
+is why it was listed on the Elwynn sheet - is removed. The item keeps its other placings: the same
+object stands in the Swamp of Sorrows (6940970) and on Sunstrider Isle (6942474). The other two rows
+deleted by hand - The Wanderer's Stirring Rod (6941224) and Thunder Falls Finest Gun Selection's
+duplicate (6941243) - were already gone, because the editor's own saves deleted those guids.
+
+**How the numbers were checked.** Every statement is an UPDATE on a guid, a REPLACE on a guid the
+file allocates, or a DELETE on a guid the editor deleted, so re-running it leaves the same rows:
+the file was applied to the live database and applied again with no error. After it, `acore_world`
+holds **99,121 gameobjects and 2,482 worldforged pickups**, none of the five removed guids remains,
+and all five placements above stand with the coordinates the file writes.
+
+**The workbook was then checked against the server, row by row.** `worldforged-items.xlsx` carries
+**697 placement rows over 15 sheets** (Searing Gorge added from the pass above); every row's guid
+was read back from the live database - **0 rows with nothing behind them, 0 entry mismatches** -
+each row's position, height and facing were refreshed from the database, each row the editor
+touched is marked `Rotation complete`, and the rows for the six deleted objects are gone from the
+sheets while the two new placements and the re-placed Lost Shipment are in them at their final
+guids.
+
+### The nineteenth pass: Dun Morogh and Coldridge Valley, paired marker by marker
+
+`2026_09_23_16_worldforged_dun_morogh.sql` is the pass that moved the marker set itself, and
+`2026_09_23_17_worldforged_subzone_markers.sql` carries the repair that followed from it. The map
+keeps a page of its own for its sub-zones - the Grizzled Den, Coldridge Pass, Chill Breeze Valley,
+Gol'Bolar Quarry, Jangolode Mine, Gold Coast Quarry, Blackrock Mountain, Northshire Valley and
+thirty-two more - and those pages carry **380 markers between them**. The bounds table the earlier
+passes projected markers through had no rectangle for any of those pages, so every one of those
+markers was invisible to them. With the complete set, **twenty-one of them stand in Dun Morogh and
+Coldridge Valley**: the Grizzled Den's own chests, at the back of the zone by Chill Breeze Valley
+and the pass.
+
+Two consequences, both fixed before this pass was applied:
+
+* **five rows the earlier passes dropped are put back** (`..._17_worldforged_subzone_markers.sql`):
+  Misplaced Pitchfork (515224) on the Jangolode Mine marker of its name, Quarry Sledge (95785) on
+  the Gold Coast Quarry one, and Blackbreach Handaxe (686898), Darkest Night Ring (90288) and
+  Taskmaster's Blade (254660) on Blackrock Mountain's. Each is written back with the guid it had, on
+  its own marker, so a database that has already run the dropping migrations and one that has not
+  both end in the same state.
+* **the new pass's own drop list was corrected before it ran**: it did not exclude the rows the
+  pass had already decided about, and two it had just moved onto their markers (Forgewright's
+  Scepter, Obsidian Axe) were listed for deletion as well. Every previously applied zone file was
+  swept for the same overlap afterwards; all clean.
+
+The zone's own page lists **83 markers** in Dun Morogh and Coldridge Valley together - **74 real
+placements** and **9 cluster labels** over drops. After the pass:
+
+* **70 placements stand 0.0 to 2 yd on the marker of the object's own name**.
+* **four stand on the twin listing the map plots a few yards away under the item's name** and are
+  moved onto the marker of the object's own name, each keeping the height the realm's own record
+  gives it: Miner's Pickaxe (3.9 yd, height 361.82, which the realm recorded 2.9 yd away),
+  Frostwalker's Boots (4.1 yd), Radiant Helmet (4.9 yd) and Forgotten Sack (4.9 yd, height 408.38,
+  recorded 3.5 yd away).
+* **nothing is removed**: every pickup standing in the zone honours a marker of its own object or of
+  the item it hands out; the zone holds 69 pickups, 69 distinct objects, each with its loot row.
+* **three markers name objects this world never carried**, and all three are restored field for
+  field from the realm's own client-cache records, each standing where the realm's own client saw
+  its chest: **Adlin's Cherry Pie** (entry 90639, standing 0.5 yd from its marker, its loot row
+  handing out the item the marker is named after, 694541 - and because the chest the realm recorded
+  is its own *invisible* one, display 980926, the visible Cherry Pie prop it stood beside, entry
+  90635 display 5493, is restored with it, guid 6942485), **Brynja's Water Pouch** (90640, display
+  1033132, 1.2 yd, handing out 969160) and the **Black Powder Barrel** (93002, display 30, 2.7 yd,
+  keeping the loot-table id its own record names because no source held records the item it held).
+
+**Heights inside the caves.** Nineteen of the zone's rows read 6 to 150 yd from the terrain the
+worldserver reads - eighteen of them under it and one, Officer's Pike, 11.5 yd over it - which is
+what an interior looks like: the Grizzled Den, Chill Breeze Valley and the Frostmane caves are all
+under the zone's surface. Fourteen of them carry the height the realm's own client recorded for
+that object (eight of those agreeing within 3 yd, the other six within 25). Five have no sighting
+of their own object near them, and their height is read from the realm's own occupants instead of
+from the terrain:
+
+* **Forsaken Cart Crate** (356.0), **Phylactery Shard** (354.3) and **Skeletal Club** (365.1) stand
+  in the Frostmane cave, where the realm's own Wendigos stand at 353.4 to 358.3 within 40 yd, its
+  Copper Vein nodes at 354.3 to 361.6, and its Battered Chests at 354.3 and 354.9 - the vein 9.7 yd
+  from the Skeletal Club reads 365.5 against the row's 365.1. The realm's own record of each of
+  these three chests is in the Tirisfal Glades or the Western Plaguelands, where its other placing
+  stands; in this cave the floor is the one its occupants share.
+* **Edan's Stripe** (350.5) stands 32.9 yd from the realm's own chest 95513 (346.9), the floor of
+  the same chamber; **Warm Mug** (391.5) is 30.4 yd from the realm's own record of its own entry
+  95508 (392.7, agreeing to 1.2 yd).
+
+Its appearance is a record too: no row in the zone carries the placeholder, and the one that does
+by design - Adlin's Cherry Pie's own chest, which the realm itself recorded as invisible - stands
+with the visible prop restored beside it.
+
+### The eighteenth pass: Burning Steppes, paired marker by marker
+
+`2026_09_23_15_worldforged_burning_steppes.sql` is the first marker-by-marker pass that also had
+to move and remove. The page lists **78 markers**, of which **74 are real placements**, **two name
+nothing in any source held** and **two are cluster labels**. The zone held 77 pickups before it;
+after it, **73 stand 0.0 to 2 yd on their marker** and one is kept where the realm's own record
+puts it.
+
+* **three placements stood a few yards off and are snapped onto their markers**: Half Buried Chest
+  5.7 yd, Forgewright's Scepter 3.8 yd, Obsidian Axe 3.3 yd. Each of those markers' own spots is
+  corroborated by the realm's own dump, which sees those chests 0.7, 0.6 and 0.8 yd from it.
+* **Half Buried Chest is a placement the map records twice**: its Burning Steppes page plots 'Half
+  Buried Chest' at -7481.9 -2272.4 and its Badlands page plots the same chest as the item it hands
+  out, 'Focusing Spirit Band', 5.7 yd away. The realm's own dump sees the chest at -7481.6 -2271.9
+  - 0.7 yd from the Burning Steppes marker and 6.1 yd from the Badlands listing - so the pickup
+  stands where the realm had it, and the Badlands page's twin is left to that zone's own pass.
+* **one placement is kept**: Obsidian Boltthrower stands 5.2 yd off its marker, while the realm's
+  own record for that chest agrees with the pickup rather than with the marker (3.4 yd off it).
+* **three rows stood on no marker of any page and are removed**: Blackbreach Handaxe (127.7 yd away),
+  Darkest Night Ring (85.6 yd) and Taskmaster's Blade (120.7 yd). Each is a second spawn of an
+  entry whose other spawn stands on the realm's own recorded spot (1.2, 1.1 and 4.4 yd from it),
+  so removing them takes out a duplicate the pin-based build left behind and loses no documented
+  placement.
+* **two markers name nothing in any source in hand**: 'Charred Corpse' (no object of that name, no
+  loot pin, and nothing of the realm's own within 60 yd at all) and 'Burning Heat' (no object of
+  that name; its own Conquest of Azeroth pin 2.0 yd away names *Mystic Scroll: Cataclysmic
+  Sundering*). Nothing is invented for either.
+* **two cluster labels**, `Worldforge Drops (2 items)`, over the Firegut camp.
+
+### The seventeenth pass: Redridge Mountains, paired marker by marker
+
+`2026_09_23_14_worldforged_redridge_mountains.sql` moves nothing and removes nothing: the page
+lists **39 markers**, and all **thirty-one** of them that this world has an object for stand 0.0 to
+2 yd on it, with no pickup in the zone standing on no marker of any page. Its other **eight**
+markers are objects the realm had and this world does not carry; every one of them is in the
+realm's own client-cache dump and in the archive's world-object index:
+
+* **five are Mystic Scroll chests** - the item a Conquest of Azeroth loot pin within four yards of
+the marker names, and that family is out of scope, so nothing is invented for them: Codex of
+Divine Mending (99018, display 184777) *Mystic Scroll: Promise of Renewal* 1.9 yd, Drowned
+Adventurer (101911, display 980926) *Mystic Scroll: Divine Reprieve* 3.1 yd, Cultivated Blazethorn
+(735923, display 1010579) *Mystic Scroll: Sudden Aftermath* 3.1 yd, Pilfered Shield (90210, display
+1011608) *Mystic Scroll: Revengeful Block* 3.7 yd, Redfang's Cache (835953, display 336) *Mystic
+Scroll: Stalker's Mark* 3.5 yd.
+* **three have no item record in any source inside sixty yards**, so nothing is invented for them
+either. Each is a chest the realm's own dump sees standing on its marker: Flourishing Flowers
+(1190585, display 1060657) 0.5 yd, Shadowbound Doll (95024, display 1046185) 0.6 yd, Maddening Aura
+(101913, display 515662) 1.2 yd - the nearest pin to either of the last two, 37 and 43 yd away,
+belongs to the treasure those yards away and not to them.
+
+**Redfang's Cache** is the one the realm's own records can restore, and is: the map plots the
+marker at -9793.4 -2219.1, the realm's own dump sees its chest (entry 835953) **0.5 yd** from that
+spot, and a Conquest of Azeroth loot pin **5.5 yd** from it names **Melika's Ring** (item 500813).
+The object is written as the realm's own client cache holds it - its own entry and name, display
+336 (the crate the realm uses for 35 of its chests), its cast bar, the chest lock 1689 and its own
+loot-table id 835953 - and the loot row hands out that one item, which is this module's shape: one
+pickup, one item. The chest's own loot table is a server-side table this world has never carried,
+so it cannot be read; the realm's loot pin is what ties the item to the spot, and the chest's other
+pin, a Mystic Scroll, is out of scope with the rest of that family. Its spawn (guid 6942481) stands
+on the marker at the terrain's own height, which agrees with the realm's record for that chest to
+2 cm.
+
+### The sixteenth pass: Swamp of Sorrows, paired marker by marker
+
+`2026_09_23_13_worldforged_swamp_of_sorrows.sql` holds **no statements**: this zone needed no
+change, and the file exists so the check has a record beside every other zone's. The page lists
+**68 markers**:
+
+* **64 real placements, and all 64 stand 0.0 to 2 yd on their marker** - the first zone in which
+nothing at all was off. Nethergarde Mining Cap is one placement the map records twice: at this
+pickup's own spot on its Swamp of Sorrows page (0.0 yd) and 10.1 yd away on its Blasted Lands page.
+* **one object the realm had and this world does not**: 'Paladin Corpse' (object 93024, six
+sightings, filed by the realm under DeadwindPass and SwampOfSorrows) stood 0.7 yd from the marker,
+but Ascension's own record of it is the invisible placeholder model and no loot pin within 60 yd
+names anything it held. Nothing is invented for it.
+* **one name no source held knows**: 'Travel Cloak'. No object of that name exists, no loot pin sits
+under it, and no item called Travel Cloak is handed out by any object, creature or reference table
+in this world.
+* **two cluster labels**, `Worldforge Drops (2 items)`.
+
+All **58 pickups** standing in the zone sit within 3 yd of a marker of their own object name or of
+the item they hand out; they are 58 distinct objects, no two within 0.5 yd, and every one holds its
+loot row. Their appearance is a record: 51 carry the entry's own record from the realm's client
+cache, five whose record there is the invisible cube (Holy Atal'ai Band, Defiled Necklace,
+Dusksinger Band, Ruby Giant's Eye, Long-Abandoned Circlet) carry the same-name counterpart of the
+appearance migration's tier C, and two (Sentinel Wrap, Unusual Emerald Scales) carry the archive's
+own catalogue value, tier K. No placeholder stands in the zone. Nine rows read 8 to 135 yd from the
+terrain reader's surface, every one of them at a height the realm recorded for that same object:
+five in the Sunken Temple's undercroft (Atal'ai Alchemy Supplies, Kazkaz's Ceremonial Mask, Sunken
+Axe, Sharpened Dragon Bone, Shoulderguards of the Ancient Prophet), one in the mine under
+Nethergarde (Nethergarde Mining Cap), and three on shelves or ledges of the swamp itself (Mire
+Leaves, Defiled Necklace, Splinterspear Armor Crate).
+
+The map's double listings appear here too, and are left as the map has them: **eleven** of the
+zone's pickups are the second page's listing of an object whose other listing the realm's own pins
+corroborate - six across the Deadwind Pass border about 1,320 yd north (Long-Abandoned Circlet,
+Ogrish Handaxe, Foreboding Banner, Dark Scythe, Cursed Branch, Ancient Formula), three in the
+Badlands some 5,100 yd east (Gravesword, Ramshackled Crate, Real Big Bone), one in Westfall 4,410 yd
+away (Klaven's Wardrobe) and one in Mulgore 9,154 yd away (Discarded Wagon Wheel). Two pickups,
+Arcane Tinged Water and Sentinel Wrap, have no corroboration at either end and stand because the
+page plots them.
 
 ## How it works
 
@@ -76,19 +1011,26 @@ nor stable across grid reloads. The restoration writes its spawns in the fixed b
 2. **The SQL applied.** With `Updates.EnableDatabases = 7` (all three databases) the core
    applies `data/sql/db-world/` and `data/sql/db-characters/` at startup by itself; use `6`
    if you want the characters and world databases only. `1` is the auth database alone and
-   would leave both migrations unapplied. On a repack that runs with the updater off, apply
-   the two files by hand, exactly as they are:
-   `data/sql/db-world/2026_09_16_00_worldforged_pickups.sql` and
-   `data/sql/db-characters/2026_09_16_00_worldforged_loot.sql`. The first is idempotent: the
-   templates and loot rows are written with `REPLACE INTO` (keyed on `entry`, and on
-   `Entry, Item`), and each block of spawns is preceded by a `DELETE` on its own `guid`
-   range - so re-applying it is safe, twice in a row or a hundred times.
+   would leave the migrations unapplied. On a repack that runs with the updater off, apply
+   the files by hand, exactly as they are:
+   `data/sql/db-world/2026_09_16_00_worldforged_pickups.sql`,
+   `data/sql/db-world/2026_09_22_00_worldforged_pickup_spawns.sql`,
+   `data/sql/db-world/2026_09_22_01_worldforged_missing_pickups.sql`,
+   `data/sql/db-world/2026_09_22_02_worldforged_crossrealm_spawns.sql`,
+   `data/sql/db-world/2026_09_22_03_worldforged_appearance_and_ground.sql` and
+   `data/sql/db-characters/2026_09_16_00_worldforged_loot.sql`. The world files are
+   idempotent: the templates and loot rows are written with `REPLACE INTO` (keyed on `entry`,
+   and on `Entry, Item`), each block of spawns is preceded by a `DELETE` on its own `guid`
+   range, the map corrections and the appearance and height fixes are `UPDATE`s on their own
+   entries and guids - so re-applying any file is safe, twice in a row or a hundred times.
+   Appearance and height are read at startup with the rest of the world, so a placement that
+   moves needs a worldserver restart to be seen.
 
 ## Verify it went in
 
 Boot log:
 
-* `>> Loaded 98138 Gameobjects` - equal to `SELECT COUNT(*) FROM acore_world.gameobject`, so
+* `>> Loaded <n> Gameobjects` - equal to `SELECT COUNT(*) FROM acore_world.gameobject`, so
   nothing was skipped for a display id
 * 3,784 C++ scripts with this module loaded (`GameObjectScript`, `GlobalScript`,
   `PlayerScript`)
@@ -96,14 +1038,20 @@ Boot log:
 * no `has an invalid displayId (...)`, and no invalid-rotation warnings
 
 ```sql
-SELECT COUNT(*) FROM acore_world.gameobject WHERE guid BETWEEN 6900001 AND 6999999;   -- 1510
-SELECT COUNT(*) FROM acore_world.gameobject_template WHERE ScriptName='worldforged_pickup';  -- 1555
-SELECT COUNT(*) FROM acore_world.gameobject_loot_template WHERE Comment LIKE 'AscensionWorldforged:%';  -- 1555
+SELECT COUNT(*) FROM acore_world.gameobject WHERE ScriptName='worldforged_pickup';              -- 4116
+SELECT COUNT(DISTINCT id) FROM acore_world.gameobject WHERE ScriptName='worldforged_pickup';     -- 1715
+SELECT COUNT(DISTINCT map) FROM acore_world.gameobject WHERE ScriptName='worldforged_pickup';    -- 30
+SELECT COUNT(*) FROM acore_world.gameobject_template WHERE ScriptName='worldforged_pickup';      -- 1742
+SELECT COUNT(*) FROM acore_world.gameobject_loot_template WHERE Comment LIKE 'AscensionWorldforged%';  -- 1742
+-- appearance: an invisible placeholder is what a bare sparkle looks like
+SELECT COUNT(*) FROM acore_world.gameobject_template WHERE ScriptName='worldforged_pickup' AND displayId=980926;  -- 0
+SELECT COUNT(*) FROM acore_world.gameobject_template WHERE ScriptName='worldforged_pickup' AND displayId=0;       -- 0
 ```
 
 In play: `.go xyz -8769.1 -174.1 83.9` (Wax Stained Bag, 185 yd from Stormwind). It should
-sparkle, hand over its own base item once, and then be inert **for that character** while
-another character still sees it sparkling. A character's ledger:
+stand on the ground with its own prop visible, sparkle, hand over its own base item once, and
+then be inert **for that character** while another character still sees it sparkling. A
+character's ledger:
 
 ```sql
 SELECT * FROM acore_characters.character_worldforged_loot WHERE guid = <character guid>;
@@ -171,7 +1119,7 @@ DROP TABLE IF EXISTS acore_characters.character_worldforged_loot;
 
 The undo lives under `data/sql/manual/` rather than beside the migration because it *deletes*
 rows from `gameobject_template`, which the repository's SQL lint asks updates never to do.
-Both migration files pass that lint; the undo is the one file that deletes on purpose.
+All three migration files pass that lint; the undo is the one file that deletes on purpose.
 
 To re-test one pickup from scratch, clear the character's row and re-log (the module drops its
 in-memory copy on logout):
