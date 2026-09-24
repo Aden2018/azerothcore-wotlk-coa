@@ -824,6 +824,20 @@ touched is marked `Rotation complete`, and the rows for the six deleted objects 
 sheets while the two new placements and the re-placed Lost Shipment are in them at their final
 guids.
 
+### The last two rows of the Elwynn and Northshire pass
+
+`2026_09_24_30_worldforged_elwynn_last_rows.sql` carries the two rows of that pass that the editor
+moved once more, after the file above was written, so the world and the file no longer agreed:
+
+* **Ziz's Alchemy Goggles** (254229, guid 6941368, Jasperlode Mine) stands 0.2 yd higher than the
+  pass left it, and its x and y were nudged by a thousandth of a yard at the same time.
+* Northshire's **Cherry Pie prop** (90635, guid 6960002) is back on the spot the pass before the
+  last one wrote, 0.35 yd from where the last pass left it.
+
+Both rows are written as the world holds them, read back from `acore_world` down to the digit - the
+quaternion as well as the position - and both are UPDATEs keyed on guid, so the file is idempotent
+and touches nothing but the position, the rotation and the comment.
+
 ### The nineteenth pass: Dun Morogh and Coldridge Valley, paired marker by marker
 
 `2026_09_23_16_worldforged_dun_morogh.sql` is the pass that moved the marker set itself, and
