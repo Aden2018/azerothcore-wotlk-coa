@@ -19,10 +19,6 @@ bool First(AuraEffect const* effect)
             return false;
     return true;
 }
-bool Mark(SpellInfo const* info)
-{
-    return info && info->SpellFamilyName == 23 && (info->SpellFamilyFlags[1] & 2147483648u);
-}
 class aura_ascension_xoroth_lifecycle : public AuraScript
 {
     PrepareAuraScript(aura_ascension_xoroth_lifecycle);
@@ -38,6 +34,10 @@ class aura_ascension_xoroth_lifecycle : public AuraScript
             amount = int32(amount * (1 + .2f * State(player).blood));
         if (id == 803889)
             amount = int32(amount * (1 + .2f * State(player).fire));
+        if (id == 801063 && effect->GetEffIndex() == EFFECT_2)
+            amount = player->HasAura(707232) ? Amount(707232, 0) : 0;
+        if (id == 801019 && effect->GetEffIndex() == EFFECT_1)
+            amount = player->HasAura(300386) ? Amount(300386, 0) : 0;
     }
     void Apply(AuraEffect const* effect, AuraEffectHandleModes)
     {

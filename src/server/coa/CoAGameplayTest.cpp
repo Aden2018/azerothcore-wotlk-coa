@@ -1522,14 +1522,23 @@ private:
             sScriptMgr->ModifyPeriodicDamageAurasTick(player, attacker, damage, info);
             return damage;
         }
-        if (metric == "spell_done_crit_chance" || metric == "melee_spell_damage_done" ||
-            metric == "spell_critical_damage" || metric == "armor_reduced_damage")
+        if (metric == "spell_done_crit_chance" || metric == "spell_done_crit_chance_scripted" ||
+            metric == "melee_spell_damage_done" || metric == "spell_critical_damage" ||
+            metric == "armor_reduced_damage")
         {
             Unit* target = GetUnit(step.get<std::string>("target"));
             SpellInfo const* info = sSpellMgr->GetSpellInfo(spell);
             Require(info != nullptr, "Unknown spell in metric");
             if (metric == "spell_done_crit_chance")
                 return player->SpellDoneCritChance(target, info, info->GetSchoolMask(), BASE_ATTACK, false);
+            if (metric == "spell_done_crit_chance_scripted")
+            {
+                float chance = player->SpellDoneCritChance(target, info, info->GetSchoolMask(), BASE_ATTACK, false);
+                Spell* probe = new Spell(player, info, TRIGGERED_NONE);
+                sScriptMgr->OnSpellCritChance(probe, target, chance);
+                delete probe;
+                return chance;
+            }
             if (metric == "spell_critical_damage")
                 return Unit::SpellCriticalDamageBonus(player, info, 1000, target);
             if (metric == "armor_reduced_damage")

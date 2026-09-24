@@ -186,6 +186,10 @@ class spell_ascension_xoroth_sacrificial_circle : public SpellScript
         Player* player = Owner(GetCaster());
         targets.remove_if([player](WorldObject* target) { return !player || !OwnImp(player, target); });
     }
+    void PreventLaunchDefault(SpellEffIndex index)
+    {
+        PreventHitDefaultEffect(index);
+    }
     void Sacrifice(SpellEffIndex index)
     {
         PreventHitDefaultEffect(index);
@@ -193,14 +197,19 @@ class spell_ascension_xoroth_sacrificial_circle : public SpellScript
         Creature* imp = GetHitCreature();
         if (!player || !OwnImp(player, imp))
             return;
-        imp->CastCustomSpell(706753, SPELLVALUE_BASE_POINT0, int32(imp->CountPctFromMaxHealth(25)), player,
-                             TRIGGERED_FULL_MASK);
+        int32 const healAmount = int32(imp->CountPctFromMaxHealth(25));
+        int32 const shieldAmount = int32(imp->CountPctFromMaxHealth(15));
+        imp->CastCustomSpell(706753, SPELLVALUE_BASE_POINT0, healAmount, player, TRIGGERED_FULL_MASK);
+        if (player->HasAura(706758))
+            player->CastCustomSpell(706759, SPELLVALUE_BASE_POINT2, shieldAmount, player, TRIGGERED_FULL_MASK);
     }
     void Register() override
     {
         OnCheckCast += SpellCheckCastFn(spell_ascension_xoroth_sacrificial_circle::CheckImps);
         OnObjectAreaTargetSelect += SpellObjectAreaTargetSelectFn(spell_ascension_xoroth_sacrificial_circle::SelectImps,
-                                                                  EFFECT_0, TARGET_UNIT_DEST_AREA_ALLY);
+                                                                  EFFECT_0, TARGET_UNIT_SRC_AREA_ALLY);
+        OnEffectLaunchTarget += SpellEffectFn(spell_ascension_xoroth_sacrificial_circle::PreventLaunchDefault, EFFECT_0,
+                                              SPELL_EFFECT_TRIGGER_SPELL);
         OnEffectHitTarget += SpellEffectFn(spell_ascension_xoroth_sacrificial_circle::Sacrifice, EFFECT_0,
                                            SPELL_EFFECT_TRIGGER_SPELL);
     }
