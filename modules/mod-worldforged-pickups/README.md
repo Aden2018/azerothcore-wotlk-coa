@@ -681,6 +681,42 @@ The worldserver applies the file on boot and reads **99,124 gameobjects** and **
 pickups**, four spawns more than before the pass and two objects among them this world had never
 carried.
 
+### The final authored pass: Redridge Mountains, item by item
+
+`2026_09_24_29_worldforged_redridge_authored.sql` is the zone's own check in the map editor, the
+same shape as the Elwynn one below: thirty-three changesets, one save each, read in the order they
+were written with the last write to a row winning. Every one of the zone's **33 pickups** was gone
+over by hand, so all 33 rows appear in the file: **26 of them moved** - the furthest **Unclaimed
+Sack** (6941289, 140.2 yd), **Ilgalar Stolen Neckpiece** (6941149, 67.1), **Aqualon's Core**
+(6940068, 63.7), **Ribchaser's Loop** (6940958, 39.0) and **Tharil'zun's Extra Boots** (6941206,
+33.7) - and **10 of them turned**, the largest turns **Ribchaser's Loop** (2.87 rad), **Lexicon of
+Azora - Part II** (2.31), **Gnollish Sword** (2.22) and **Yowler's Howl** (1.95). The remaining
+**6 rows were re-saved unchanged**: Apprentice Staff, Wax Stained Bag, Sword in a Board, Defias
+Special Bucket, Old Grave and Forgotten Sack all still stand exactly where the earlier pass left
+them, so the save is the editor saying so and the rows are re-asserted to the same values.
+
+Four objects were also placed beside the murloc camp at Lake Everstill, and they are **props, not
+pickups** - their templates are scenery (type 5), not chests, so they carry no script: they do not
+sparkle and hand out nothing. They keep the guids the allocator gave them:
+
+* **Temporary Spawned Murloc Hut 01** (186742) twice, guids 6960013 at -9453.5 -3347.1 and 6960014
+  at -9465.4 -3340.6, and **Temporary Spawned Murloc Hut 02** (186743) at -9442.9 -3337.7, guid
+  6960012;
+* **Murloc Cage** (182164), at -9461.1 -3341.0, guid 6960015.
+
+One row from the Elwynn pass is corrected here at the same time. The **Gypsy Wagon** (178666, guid
+6960011) that was placed beside the Traveler's Forest Cloak is scenery too - its template is a
+wagons-and-carts doodad, not a chest - but it had been written with this module's script on it,
+which made a prop sparkle and open an empty loot window. The script is taken off it, so what stands
+there is what the editor placed: a wagon, not a pickup. (It is one row fewer in the pickup counts
+below, which is why the count moves by the four props rather than five.)
+
+The file writes the position and the rotation quaternion exactly as the editor emitted them, and
+the orientation column as the yaw that quaternion represents; nothing else in a row is touched, so
+spawn masks, phase, loot table and each row's earlier comment history survive. **All 37 rows of the
+zone - 33 pickups and 4 props - were then read back from the live database and match the file
+exactly**, positions, facings, entries and scripts alike.
+
 ### The placements and rotations authored in game: Elwynn Forest
 
 `2026_09_23_18_worldforged_authored_in_game.sql` is not a map pass: every row in it was authored
