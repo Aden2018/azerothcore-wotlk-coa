@@ -138,6 +138,7 @@ constexpr uint16 CMSG_SET_CAN_SEE_APPEARANCES = 0x06A3;
 constexpr uint16 SMSG_VANITY_COLLECTION_INFO = 0x06F7;
 constexpr uint16 SMSG_VANITY_COLLECTION_ADDED = 0x06F8;
 
+constexpr uint16 CMSG_QUERY_CUSTOM_STORE = 0x06B9;
 constexpr uint16 SMSG_QUERY_CUSTOM_STORE_RESULT = 0x06BA;
 constexpr std::size_t VANITY_STORE_RECORD_DWORDS = 16;
 constexpr uint16 SMSG_CHARACTER_ADVANCEMENT_ACTIVE_SPEC = 0x0725;
@@ -4936,6 +4937,15 @@ public:
 
     if (AscensionCompatOpcodes::Dispatch(session, packet))
       return false;
+
+    if (opcode == CMSG_QUERY_CUSTOM_STORE)
+    {
+      WorldPacket empty(SMSG_QUERY_CUSTOM_STORE_RESULT, 32);
+      empty << "QUERY_CUSTOM_STORE_OK";
+      empty << uint32(0);
+      session->SendPacket(&empty);
+      return false;
+    }
 
     if (ascensionCompatConfig.GetConfigValue<bool>(
             AscensionCompatConfig::LOG_CONSUMED_PACKETS)) {
