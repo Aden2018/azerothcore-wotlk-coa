@@ -3271,6 +3271,12 @@ public:
       return;
     }
 
+    if (player->GetSession()->IsBot())
+    {
+      InitializeRiding(player);
+      return;
+    }
+
     std::shared_ptr<PlayerCollectionState> state =
         std::make_shared<PlayerCollectionState>();
     state->AccountId = player->GetSession()->GetAccountId();
@@ -3431,7 +3437,7 @@ public:
 
     void PrepareOwnedCompanionsBeforeMap(Player* player)
     {
-        if (!_clientDataLoaded || player->IsInWorld() || !player->GetSession()->PlayerLoading() ||
+        if (!_clientDataLoaded || player->GetSession()->IsBot() || player->IsInWorld() || !player->GetSession()->PlayerLoading() ||
             !ascensionCompatConfig.GetConfigValue<bool>(AscensionCompatConfig::LEARN_OWNED_COMPANIONS))
             return;
 
