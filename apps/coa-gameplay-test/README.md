@@ -395,7 +395,9 @@ area, zone or map range, which `system_messages` counts.
 
 Creatures require `id`, player `owner` and template `entry`. Optional `distance` offsets X from their owner
 (default 3 yards); `faction`, `level`, `health` default to 14, 80, 100000. They retain template data and AI,
-with passive reaction and health regeneration disabled. Pick a template whose scripts suit the experiment.
+with passive reaction and health regeneration disabled. The native player-damage share a kill needs for loot and
+reward is taken from the declared health, so a player's kill leaves a lootable or skinnable corpse. Pick a
+template whose scripts suit the experiment.
 Setup clears combat initiated by spawn-time AI before starting the scenario: a fixture whose AI engaged a player
 while spawning evades at once. No step runs while any fixture is evading, so a spell or attack is never aimed at
 a fixture that is resetting; the step's time keeps running meanwhile. Combat otherwise follows normal rules.
@@ -668,6 +670,9 @@ Faerie Fire (770) supplies a 5% armor reduction. Spell 705798 uses melee hit res
 sets melee hit and expertise as well as spell hit. Template 1501 has HealthModifier 0.93: the level-1
 fixture's real pool remains 40 HP while its level-57 view has 2,590 HP. Ten one-damage hits cannot remove
 a whole real HP; 67 remove one.
+
+`scenarios/skinning-dungeon-scaled-view.json` and `scenarios/skinning-open-world-level-scaling.json` need the
+same settings: the skinning requirement follows a view that lowers a dungeon creature, never one that lifts it.
 
 `scenarios/destiny-weaver-quest-fallback.json` requires a separate run with `DestinyWeaver.Enable=0`
 and `CoA.QuestLevelScaling=1`. Quest 7 must still scale to the player's level and award XP.
