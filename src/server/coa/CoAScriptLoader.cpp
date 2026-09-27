@@ -173,6 +173,7 @@ void AddSC_AscensionPrimalistWildheart();
 void AddSC_AscensionPrimalistDreamslip();
 void AddSC_AscensionPrimalistDouse();
 void AddSC_AscensionPrimalistNeptulonWrath();
+void AddSC_AscensionConvenienceItems();
 void AddSC_AscensionPrimalistSacredGrove();
 void AddSC_AscensionPrimalistAncientWar();
 void AddSC_AscensionPrimalistEarthmotherRoar();
@@ -424,6 +425,7 @@ void AddCoAScripts()
     AddSC_AscensionPrimalistDreamslip();
     AddSC_AscensionPrimalistDouse();
     AddSC_AscensionPrimalistNeptulonWrath();
+    AddSC_AscensionConvenienceItems();
     AddSC_AscensionPrimalistSacredGrove();
     AddSC_AscensionPrimalistAncientWar();
     AddSC_AscensionPrimalistEarthmotherRoar();
