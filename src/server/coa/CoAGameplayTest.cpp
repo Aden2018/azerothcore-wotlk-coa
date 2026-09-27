@@ -1479,6 +1479,12 @@ private:
             return unit->IsAlive();
         if (metric == "map_id")
             return unit->GetMapId();
+        if (metric == "position_x")
+            return unit->GetPositionX();
+        if (metric == "position_y")
+            return unit->GetPositionY();
+        if (metric == "position_z")
+            return unit->GetPositionZ();
         if (metric == "combat")
             return unit->IsInCombat();
         if (metric == "casting")

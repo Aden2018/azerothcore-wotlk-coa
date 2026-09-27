@@ -565,6 +565,8 @@ numeric `SpellCastResult` reasons. These diagnose a rejected submission; effect 
 `distance` requires `target` and measures the native two-dimensional distance, in yards, between the actor and
 that target. It reads position and nothing else, so displacement from a knockback, pull or teleport shows up as
 the difference between two observations; take a `snapshot` first and assert `relative_to` it. Height is excluded.
+`position_x`, `position_y` and `position_z` read the unit's native coordinates on its current map, so a
+teleport's landing can be held to its destination with `min`/`max` bounds; pair them with `map_id`.
 `spell_proc_count` requires `spell` and counts the procs of that spell's aura on the actor since the scenario
 started. What is counted is each spell the proc cast while the aura was named as its trigger, which is the one
 place the server records both the proc and its owner; an aura whose proc does not cast anything counts zero.
