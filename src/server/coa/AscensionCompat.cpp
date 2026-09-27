@@ -2933,8 +2933,16 @@ private:
 
     static bool HarvestTimePreserves(Player const* player, SpellInfo const* spellInfo)
     {
-        return spellInfo->CasterAuraSpell == SPELL_REAPER_SOUL_INFUSION &&
-            player->HasAura(SPELL_REAPER_HARVEST_TIME);
+        if (spellInfo->CasterAuraSpell != SPELL_REAPER_SOUL_INFUSION ||
+            !player->HasAura(SPELL_REAPER_HARVEST_TIME))
+            return false;
+
+        SpellInfo const* harvestTime = sSpellMgr->GetSpellInfo(SPELL_REAPER_HARVEST_TIME);
+        if (!harvestTime)
+            return false;
+
+        float const preserveChance = std::abs(harvestTime->Effects[EFFECT_1].CalcValue());
+        return roll_chance_f(preserveChance);
     }
 
     static bool WasAvoidedByEveryTarget(Player const* player, Spell* spell)
@@ -6617,8 +6625,9 @@ class spell_ascension_reaper_ruin : public AuraScript
 {
     PrepareAuraScript(spell_ascension_reaper_ruin);
 
-    static constexpr std::array<uint32, 5> ShudderScythe =
-        {{572382, 578261, 578262, 801322, 805708}};
+    static constexpr std::array<uint32, 13> RuinTriggers =
+        {{572382, 578261, 578262, 801322, 805708,
+          500376, 502679, 502680, 502681, 502682, 502683, 502684, 504622}};
 
     bool Load() override
     {
@@ -6628,8 +6637,8 @@ class spell_ascension_reaper_ruin : public AuraScript
     bool CheckProc(ProcEventInfo& eventInfo)
     {
         SpellInfo const* spellInfo = eventInfo.GetSpellInfo();
-        return spellInfo && std::find(ShudderScythe.begin(), ShudderScythe.end(), spellInfo->Id) !=
-            ShudderScythe.end();
+        return spellInfo && std::find(RuinTriggers.begin(), RuinTriggers.end(), spellInfo->Id) !=
+            RuinTriggers.end();
     }
 
     void Register() override
