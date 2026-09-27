@@ -19,6 +19,7 @@
 #include "Creature.h"
 #include "NPCPackets.h"
 #include "Player.h"
+#include "ScriptMgr.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
 #include "WorldSession.h"
@@ -136,6 +137,7 @@ namespace Trainer
             player->learnSpell(trainerSpell->SpellId, false);
 
         SendTeachSucceeded(npc, player, spellId);
+        sScriptMgr->OnPlayerLearnTrainerSpell(player, npc, spellId);
     }
 
     Spell const* Trainer::GetSpell(uint32 spellId) const

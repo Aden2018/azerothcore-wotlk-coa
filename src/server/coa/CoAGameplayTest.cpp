@@ -380,6 +380,8 @@ struct Actor
     std::map<uint64, std::map<uint16, uint32>> unitValues;
     std::map<uint32, uint32> creatureQueryRank;
     uint32 lastQuestWindow = 0;
+    std::map<uint16, uint32> extensionPackets;
+    std::map<uint16, std::vector<std::string>> extensionPayloads;
     std::string observerError;
     std::unique_ptr<WorldSession> session;
     uint32 accountId = 0;
@@ -560,8 +562,23 @@ void ObserveUnitValues(Actor& actor, WorldPacket const& packet)
     }
 }
 
+void ObserveExtensionPacket(Actor& actor, WorldPacket const& packet)
+{
+    constexpr uint16 FirstExtensionOpcode = 0x520;
+    constexpr std::size_t MaxPayloadsPerOpcode = 64;
+    if (packet.GetOpcode() < FirstExtensionOpcode)
+        return;
+
+    ++actor.extensionPackets[packet.GetOpcode()];
+    std::vector<std::string>& payloads = actor.extensionPayloads[packet.GetOpcode()];
+    if (payloads.size() < MaxPayloadsPerOpcode)
+        payloads.emplace_back(packet.empty() ? std::string()
+            : std::string(reinterpret_cast<char const*>(packet.contents()), packet.size()));
+}
+
 void ObservePacket(Actor& actor, WorldPacket const& packet)
 {
+    ObserveExtensionPacket(actor, packet);
     ObserveSpellCasts(actor, packet);
     ObserveSpellDamage(actor, packet);
     ObserveSpellHealing(actor, packet);
@@ -1328,6 +1345,31 @@ private:
                 return creature;
 
         return nullptr;
+    }
+
+    static std::string BuybackGuid(Player* player, uint32 entry)
+    {
+        for (uint32 slot = BUYBACK_SLOT_START; slot < BUYBACK_SLOT_END; ++slot)
+            if (Item* item = player->GetItemFromBuyBackSlot(slot); item && item->GetEntry() == entry)
+                return item->GetGUID().ToString();
+
+        throw std::runtime_error("No bought-back item of entry " + std::to_string(entry));
+    }
+
+    WorldObject* GetQuestGiver(Player* player, Tree const& step)
+    {
+        if (auto const entry = step.get_optional<uint32>("gameobject"))
+        {
+            std::list<GameObject*> objects;
+            player->GetGameObjectListWithEntryInGrid(objects, *entry, 20.0f);
+            for (GameObject* object : objects)
+                if (object->IsInWorld() && player->InSamePhase(object))
+                    return object;
+
+            return nullptr;
+        }
+
+        return GetGiver(player, step.get<uint32>("entry"));
     }
 
     Creature* GetGiver(Player* player, uint32 entry)
@@ -2599,6 +2641,32 @@ private:
             uint32 id = step.get<uint32>("id");
             return sObjectMgr->GetGossipText(id) != nullptr ? 1.0 : 0.0;
         }
+        if (metric == "quest_menu_items")
+            return player->PlayerTalkClass->GetQuestMenu().GetMenuItemCount();
+        if (metric == "quest_menu_has")
+            return player->PlayerTalkClass->GetQuestMenu().HasItem(step.get<uint32>("quest")) ? 1.0 : 0.0;
+        if (metric == "player_setting")
+        {
+            PlayerSettingVector const* values = player->FindPlayerSettings(step.get<std::string>("source"));
+            uint32 const index = step.get<uint32>("index");
+            return values && index < values->size() ? double((*values)[index].value) : 0.0;
+        }
+        if (metric == "server_packets")
+        {
+            auto const& packets = _actors.at(step.get<std::string>("actor")).extensionPackets;
+            auto const found = packets.find(uint16(step.get<uint32>("opcode")));
+            return found == packets.end() ? 0.0 : double(found->second);
+        }
+        if (metric == "server_packet_contains")
+        {
+            auto const& payloads = _actors.at(step.get<std::string>("actor")).extensionPayloads;
+            auto const found = payloads.find(uint16(step.get<uint32>("opcode")));
+            std::string const needle = step.get<std::string>("text");
+            bool const contains = found != payloads.end() && std::any_of(found->second.begin(),
+                found->second.end(), [&needle](std::string const& payload)
+                { return payload.find(needle) != std::string::npos; });
+            return contains ? 1.0 : 0.0;
+        }
         throw std::runtime_error("Unknown metric: " + metric);
     }
 
@@ -2618,6 +2686,37 @@ private:
         {
             if (GameElapsed(_stepTime) < step.get<uint32>("ms"))
                 return;
+        }
+        else if (action == "client_packet")
+        {
+            Player* player = GetPlayer(step.get<std::string>("actor"));
+            WorldPacket request(uint16(step.get<uint32>("opcode")), 64);
+            if (auto const fields = step.get_child_optional("fields"))
+                for (auto const& [position, field] : *fields)
+                    for (auto const& [kind, value] : field)
+                    {
+                        if (kind == "u8")
+                            request << uint8(value.get_value<uint32>());
+                        else if (kind == "u32")
+                            request << value.get_value<uint32>();
+                        else if (kind == "u64")
+                            request << value.get_value<uint64>();
+                        else if (kind == "string")
+                            request << value.get_value<std::string>();
+                        else if (kind == "buyback_guid")
+                            request << BuybackGuid(player, value.get_value<uint32>());
+                        else
+                            throw std::runtime_error("Unknown packet field type: " + kind);
+                    }
+
+            WorldSession* session = player->GetSession();
+            bool const consumed = std::async(std::launch::async, [session, &request]
+            {
+                return !sScriptMgr->CanPacketReceiveEarly(session, request);
+            }).get();
+            record.put("consumed_early", consumed);
+            Require(consumed == step.get<bool>("consumed", true), consumed
+                ? "The packet was consumed by an early packet hook" : "No early packet hook consumed the packet");
         }
         else if (action == "level_scaling_packet")
         {
@@ -2818,7 +2917,9 @@ private:
             Require(player->IsAlive(), "Death fixture needs a living player");
             Unit::DealDamage(player, player, player->GetHealth(), nullptr, SELF_DAMAGE, SPELL_SCHOOL_MASK_NORMAL,
                 nullptr, false);
-            Require(!player->IsAlive(), "Self damage did not kill the player");
+            bool const revived = step.get<bool>("revived", false);
+            Require(player->IsAlive() == revived, revived ? "The death was not followed by a resurrection"
+                : "Self damage did not kill the player");
         }
         else if (action == "command")
         {
@@ -3029,7 +3130,23 @@ private:
             auto const& menu = player->PlayerTalkClass->GetGossipMenu();
             WorldPacket packet(CMSG_GOSSIP_SELECT_OPTION, 16);
             packet << menu.GetSenderGUID() << menu.GetMenuId() << step.get<uint32>("option");
+            if (auto const code = step.get_optional<std::string>("code"))
+                packet << *code;
+            else if (auto const codeActor = step.get_optional<std::string>("code_actor"))
+                packet << _actors.at(*codeActor).name;
             player->GetSession()->HandleGossipSelectOptionOpcode(packet);
+        }
+        else if (action == "sell_item")
+        {
+            Creature* vendor = GetGiver(player, step.get<uint32>("entry"));
+            Require(vendor != nullptr, "No vendor of that entry is within reach of the player");
+            Item* item = player->GetItemByEntry(step.get<uint32>("item"));
+            Require(item != nullptr, "The player carries no item of that entry");
+            WorldPacket packet(CMSG_SELL_ITEM, 20);
+            packet << vendor->GetGUID() << item->GetGUID() << uint32(step.get<uint32>("count", 0));
+            WorldPackets::Item::SellItem request(std::move(packet));
+            request.Read();
+            player->GetSession()->HandleSellItemOpcode(request);
         }
         else if (action == "who")
         {
@@ -3345,7 +3462,7 @@ private:
             uint32 quest = step.get<uint32>("quest");
             Require(sObjectMgr->GetQuestTemplate(quest) != nullptr, "Unknown quest");
 
-            Creature* giver = GetGiver(player, step.get<uint32>("entry"));
+            WorldObject* giver = GetQuestGiver(player, step);
             Require(giver != nullptr, "No giver of that entry is within reach of the player");
 
             if (action == "quest_turn_in")
@@ -3377,7 +3494,7 @@ private:
             else
             {
                 WorldPacket packet(CMSG_QUESTGIVER_ACCEPT_QUEST, 16);
-                packet << giver->GetGUID() << quest << uint8(0);
+                packet << giver->GetGUID() << quest << uint32(0);
                 bool const openToCore = sScriptMgr->CanPacketReceive(player->GetSession(), packet);
                 record.put("accept_handled_by_script", !openToCore);
                 if (openToCore)

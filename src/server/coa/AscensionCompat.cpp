@@ -169,6 +169,13 @@ constexpr std::array<uint16, 4> QUEUED_EXTENSION_OPCODES = {
     CMSG_APPLY_APPEARANCES, CMSG_SET_CAN_SEE_APPEARANCES,
     CMSG_EXTENSION_INITIALIZED, CMSG_CUSTOM_ASCENSION_POINT_SPEND_REQUEST};
 
+constexpr uint16 CMSG_QUERY_VENDORED_ITEM_RECOVERY = 0x05DE;
+constexpr uint16 CMSG_RECOVER_VENDORED_ITEM = 0x05E0;
+constexpr uint16 CMSG_CLAIM_TUTORIAL_REWARD = 0x06A8;
+
+constexpr std::array<uint16, 3> MODULE_EXTENSION_OPCODES = {
+    CMSG_QUERY_VENDORED_ITEM_RECOVERY, CMSG_RECOVER_VENDORED_ITEM, CMSG_CLAIM_TUTORIAL_REWARD};
+
 struct ExtensionOpcodeIdentity {
   uint16 Opcode;
   char const *Name;
@@ -3647,6 +3654,9 @@ public:
           appearanceItr->second.SourceItem) {
         player->SetUInt32Value(PLAYER_VISIBLE_ITEM_1_ENTRYID + slot * 2,
                                appearanceItr->second.SourceItem);
+        if (state->CollectedAppearances.contains(appearanceId) &&
+            appearanceItr->second.SourceItem != item->GetEntry())
+          sScriptMgr->OnPlayerCoAProgress(player, CoAProgressEvent::Transmogrified, appearanceId);
       }
     }
 
@@ -3791,7 +3801,10 @@ public:
       }
 
       if (Item* delivered = player->StoreNewItem(destinations, itemId, true))
+      {
         player->SendNewItem(delivered, 1, true, false);
+        sScriptMgr->OnPlayerCoAProgress(player, CoAProgressEvent::VanityDelivered, itemId);
+      }
 
       if (IsBankVanityItem(itemId))
         LearnOwnedBankSpells(player, *state, false);
@@ -3805,6 +3818,8 @@ public:
             AscensionCompatConfig::ALLOW_LEARNED_SPELL_DELIVERY) &&
         sSpellMgr->GetSpellInfo(learnedSpell)) {
       player->learnSpell(learnedSpell);
+      if (player->HasSpell(learnedSpell))
+        sScriptMgr->OnPlayerCoAProgress(player, CoAProgressEvent::VanityDelivered, itemId);
       ChatHandler(player->GetSession())
           .PSendSysMessage("Learned vanity spell {} because item {} has no "
                            "local server template.",
@@ -4062,12 +4077,24 @@ private:
     }
   }
 
+  static bool IsEquipmentAppearance(AppearanceInfo const& appearance)
+  {
+    for (uint32 category : {appearance.PrimaryCategory, appearance.SecondaryCategory,
+             appearance.TertiaryCategory})
+      if (category >= 1 && category <= 14)
+        return true;
+    return false;
+  }
+
   void CollectItem(Player *player, PlayerCollectionState &state, uint32 itemId,
                    bool notifyClient) {
     auto mappingItr = _itemAppearances.find(itemId);
     if (mappingItr != _itemAppearances.end())
     {
       uint32 appearanceId = mappingItr->second;
+      auto const appearance = _appearances.find(appearanceId);
+      if (appearance != _appearances.end() && IsEquipmentAppearance(appearance->second))
+        sScriptMgr->OnPlayerCoAProgress(player, CoAProgressEvent::AppearanceCollected, appearanceId);
       if (_appearances.contains(appearanceId) &&
           state.CollectedAppearances.insert(appearanceId).second) {
         CharacterDatabase.Execute(
@@ -4080,6 +4107,9 @@ private:
           SendAppearanceAdded(player, appearanceId, itemId);
       }
     }
+
+    if (_vanityItems.contains(itemId))
+      sScriptMgr->OnPlayerCoAProgress(player, CoAProgressEvent::VanityCollected, itemId);
 
     if (!ascensionCompatConfig.GetConfigValue<bool>(
             AscensionCompatConfig::UNLOCK_ALL_VANITY) &&
@@ -4966,6 +4996,10 @@ public:
     };
     if (std::find(kChallengeCmsgs.begin(), kChallengeCmsgs.end(), opcode) !=
         kChallengeCmsgs.end())
+      return true;
+
+    if (std::find(MODULE_EXTENSION_OPCODES.begin(), MODULE_EXTENSION_OPCODES.end(), opcode) !=
+        MODULE_EXTENSION_OPCODES.end())
       return true;
 
     if (QueueAscensionManastormPacket(session, packet))
