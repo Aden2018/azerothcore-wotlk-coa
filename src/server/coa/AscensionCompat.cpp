@@ -47,6 +47,7 @@
 #include "AscensionReaperTalents.h"
 #include "AscensionReaperSoulStrike.h"
 #include "AscensionReaperDeathwind.h"
+#include "AscensionBloodmageHemoglobe.h"
 #include "AscensionReaperPainmail.h"
 #include "AscensionReaperScytheRush.h"
 #include "AscensionVenomancerCatalyst.h"
@@ -6131,6 +6132,7 @@ public:
             ApplyAscensionVenomancerCatalystContract(spellInfo);
             ApplyAscensionReaperDeathwindContracts(spellInfo);
             ApplyAscensionReaperScytheRushContracts(spellInfo);
+            ApplyAscensionBloodmageHemoglobeContract(spellInfo);
         }
     }
 };
