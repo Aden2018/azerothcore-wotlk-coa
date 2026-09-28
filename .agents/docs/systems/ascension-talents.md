@@ -94,6 +94,9 @@ Opcodes and layouts come from the reconstructed `Extensions.dll` (`firstoni-dev/
 - `CMSG_UNLEARN_TALENTS` (0x0213, `C_CharacterAdvancement.UnlearnAllTalents`): queued with the uploads in
   arrival order and handled by `ResetPaidTalents`, then 0x0726. The CoA talent frame resets through
   `ClearPendingBuild` and an upload instead.
+- `CMSG 0x06E1` inspect (`C_CharacterAdvancement.InspectUnit`, u64 guid): `SMSG 0x06E2` answers a `CA_INSPECT_*`
+  string; on `CA_INSPECT_OK` the guid, active slot 0, one slot and the target's known entries in the 0x0726 layout.
+  Missing, not-in-world and out-of-range (`INSPECT_DISTANCE`) targets get their own results.
 - Timing: the client keys this state off its local player object, which does not exist during the loading
   screen. `OnPlayerLogin` only queues the state; the first `CMSG_SET_ACTIVE_MOVER` of the session sends it
   (`OnPlayerActiveMover`). The Ghost harness login never sends that packet: a test that needs the state calls

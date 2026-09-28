@@ -404,6 +404,21 @@ no addon-message or chat-command channel. The reconstructed DLL authenticates wi
 SRP6 and keeps the stock world-header cipher, which is the only header mode the server
 supports. Client binaries are maintained outside this repository.
 
+- `SMSG_REALM_INFO` (0x09BC) is sent at `CMSG_CHAR_ENUM`: realm id, ruleset, rates, eight
+  realm-kind gates, then the realm data path and the realm name as C strings, then the
+  add-ons flag. The data path stays empty: a non-empty one makes the DLL hot-swap client
+  data from `Data\<path>\`. The name is the authserver's `realmlist` name.
+- The Ascension realm list builds its cards from extra realm-list entries named
+  `realm!expansion!gamemode!image!unlocked!page!index!spell` in the last realm category,
+  and hides a realm without one. The authserver adds one offline entry per realm; see
+  `RealmCards.*` in `authserver.conf.dist`. `RealmCards.Category` must sort after every
+  realm's own category.
+- Wardrobe outfits: `CMSG_SAVE_APPEARANCE_OUTFIT` (0x069E, name and the category-indexed
+  appearance list) and `CMSG_DELETE_APPEARANCE_OUTFIT` (0x06A0) are answered with
+  `SAVE_/DELETE_APPEARANCE_OUTFIT_OK` or `_UNKNOWN` (0x069F / 0x06A1) and stored in
+  `character_appearance_outfit`; `SMSG_APPEARANCE_OUTFIT_INFO` (0x069D) lists them at login.
+  A saved outfit may name only collected appearances; names are 1-64 bytes, 100 per character.
+
 The `gtOCTRegenHP`, `gtRegenHPPerSpt` and `gtRegenMPPerSpt` client files each contain
 3,200 single-float rows indexed by class and level. Their SQL overlay tables are empty,
 so every class reads the client's rows. The DBC loader accepts implicit row IDs for these
