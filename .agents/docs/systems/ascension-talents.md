@@ -90,9 +90,15 @@ Opcodes and layouts come from the reconstructed `Extensions.dll` (`firstoni-dev/
   `ApplyKnownEntriesUpload` checks every entry, prices the state the set leads to (including ranks the
   progression pass hands back to omitted entries) and applies removals before additions through
   `SetTalentRank`; an upload that changes nothing still runs the progression pass. Any failure refuses the
-  whole upload with a system message, and 0x0726 always follows.
+  whole upload. 0x0726 always follows, then `SMSG 0x072C` {result, learn result, u32 entry, u32 rank}
+  (`CHARACTER_ADVANCEMENT_UPDATE_ENTRIES_RESULT`): `CA_UPDATE_ENTRIES_OK`, or `_BAD_ENTRY` (unknown or
+  foreign entry, rank past the entry, missing server spell, mixed or invalid specialization),
+  `_NOT_TRAVERSIBLE` (`CA_LEARN_LOW_LEVEL`, `CA_LEARN_MISSING_AE` / `_TE` over budget) or `_UNKNOWN`
+  (malformed upload, missing budget row). The CoA frame plays its apply sound on success; the general CA
+  frame shows a refusal as a red error.
 - `CMSG_UNLEARN_TALENTS` (0x0213, `C_CharacterAdvancement.UnlearnAllTalents`): queued with the uploads in
-  arrival order and handled by `ResetPaidTalents`, then 0x0726. The CoA talent frame resets through
+  arrival order and handled by `ResetPaidTalents`, then 0x0726 and `SMSG 0x072B` with `CA_PURGE_TALENTS_OK`,
+  or `CA_PURGE_TALENTS_NO_KNOWN_TALENTS` when nothing was removed. The CoA talent frame resets through
   `ClearPendingBuild` and an upload instead.
 - `CMSG 0x06E1` inspect (`C_CharacterAdvancement.InspectUnit`, u64 guid): `SMSG 0x06E2` answers a `CA_INSPECT_*`
   string; on `CA_INSPECT_OK` the guid, active slot 0, one slot and the target's known entries in the 0x0726 layout.
