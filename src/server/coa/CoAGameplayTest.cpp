@@ -2722,6 +2722,8 @@ private:
                             request << value.get_value<std::string>();
                         else if (kind == "buyback_guid")
                             request << BuybackGuid(player, value.get_value<uint32>());
+                        else if (kind == "actor_guid")
+                            request << GetPlayer(value.get_value<std::string>())->GetGUID().GetRawValue();
                         else
                             throw std::runtime_error("Unknown packet field type: " + kind);
                     }

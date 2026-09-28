@@ -89,7 +89,9 @@
 #include "SpellAuras.h"
 #include "SpellMgr.h"
 #include "SpellScript.h"
+#include "StringConvert.h"
 #include "Timer.h"
+#include "Tokenize.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
 
@@ -134,6 +136,12 @@ constexpr uint16 SMSG_APPEARANCE_COLLECTION_INFO = 0x0699;
 constexpr uint16 SMSG_APPEARANCE_ACTIVE_INFO = 0x069A;
 constexpr uint16 SMSG_APPEARANCE_ADDED = 0x069B;
 constexpr uint16 SMSG_APPEARANCE_OUTFIT_INFO = 0x069D;
+constexpr uint16 CMSG_SAVE_APPEARANCE_OUTFIT = 0x069E;
+constexpr uint16 SMSG_SAVE_APPEARANCE_OUTFIT_RESULT = 0x069F;
+constexpr uint16 CMSG_DELETE_APPEARANCE_OUTFIT = 0x06A0;
+constexpr uint16 SMSG_DELETE_APPEARANCE_OUTFIT_RESULT = 0x06A1;
+constexpr std::size_t MAX_APPEARANCE_OUTFIT_NAME_BYTES = 64;
+constexpr std::size_t MAX_APPEARANCE_OUTFITS = 100;
 constexpr uint16 SMSG_CAN_SEE_APPEARANCES_INFO = 0x06A2;
 constexpr uint16 CMSG_SET_CAN_SEE_APPEARANCES = 0x06A3;
 constexpr uint16 SMSG_VANITY_COLLECTION_INFO = 0x06F7;
@@ -145,6 +153,8 @@ constexpr std::size_t VANITY_STORE_RECORD_DWORDS = 16;
 constexpr uint16 SMSG_CHARACTER_ADVANCEMENT_ACTIVE_SPEC = 0x0725;
 constexpr uint16 SMSG_CHARACTER_ADVANCEMENT_KNOWN_ENTRIES = 0x0726;
 constexpr uint16 CMSG_CHARACTER_ADVANCEMENT_KNOWN_ENTRIES = 0x0727;
+constexpr uint16 CMSG_INSPECT_CHARACTER_ADVANCEMENT = 0x06E1;
+constexpr uint16 SMSG_INSPECT_CHARACTER_ADVANCEMENT_RESULT = 0x06E2;
 constexpr uint16 CMSG_MISSILE_FIRE_POSITION = 0x09C7;
 
 constexpr uint16 SMSG_PATCH_VANITY_COLLECTION = 0x0573;
@@ -166,9 +176,11 @@ static_assert(MAX_ITEM_QUERY_BULK_ENTRIES <= MAX_EXTENSION_REPLIES_PER_UPDATE);
 constexpr std::size_t POINT_SPEND_REQUEST_SIZE = sizeof(uint8) + sizeof(uint32);
 constexpr uint8 VANITY_CURRENCY_DONATION_POINTS = 2;
 
-constexpr std::array<uint16, 4> QUEUED_EXTENSION_OPCODES = {
+constexpr std::array<uint16, 7> QUEUED_EXTENSION_OPCODES = {
     CMSG_APPLY_APPEARANCES, CMSG_SET_CAN_SEE_APPEARANCES,
-    CMSG_EXTENSION_INITIALIZED, CMSG_CUSTOM_ASCENSION_POINT_SPEND_REQUEST};
+    CMSG_EXTENSION_INITIALIZED, CMSG_CUSTOM_ASCENSION_POINT_SPEND_REQUEST,
+    CMSG_SAVE_APPEARANCE_OUTFIT, CMSG_DELETE_APPEARANCE_OUTFIT,
+    CMSG_INSPECT_CHARACTER_ADVANCEMENT};
 
 constexpr uint16 CMSG_QUERY_VENDORED_ITEM_RECOVERY = 0x05DE;
 constexpr uint16 CMSG_RECOVER_VENDORED_ITEM = 0x05E0;
@@ -429,6 +441,7 @@ struct PlayerCollectionState {
   std::unordered_set<uint32> CollectedAppearances;
   std::unordered_set<uint32> OwnedVanityItems;
   std::array<uint32, APPEARANCE_CATEGORY_COUNT> ActiveAppearances{};
+  std::map<std::string, std::vector<uint32>> Outfits;
   std::vector<uint32> PendingAppearanceAdds;
   std::size_t NextPendingAppearanceAdd = 0;
   uint32 AppearanceAddTimer = 0;
@@ -1342,6 +1355,28 @@ public:
         return;
     }
     SendKnownTalentEntries(player);
+  }
+
+  void SendInspectResult(Player* player, ObjectGuid guid)
+  {
+    Player* target = ObjectAccessor::FindConnectedPlayer(guid);
+    char const* result = "CA_INSPECT_OK";
+    if (!target)
+      result = "CA_INSPECT_TARGET_NOT_FOUND";
+    else if (!target->IsInWorld())
+      result = "CA_INSPECT_NOT_IN_WORLD";
+    else if (!player->IsWithinDistInMap(target, INSPECT_DISTANCE))
+      result = "CA_INSPECT_TARGET_NOT_IN_RANGE";
+
+    WorldPacket packet(SMSG_INSPECT_CHARACTER_ADVANCEMENT_RESULT, 64);
+    packet << result;
+    if (target && std::string_view(result) == "CA_INSPECT_OK")
+    {
+      std::vector<uint8> const body = AscensionCoATalentState::KnownEntriesPayload(KnownTalentEntries(target));
+      packet << guid.GetRawValue() << uint32(0) << uint32(1);
+      packet.append(body.data(), body.size());
+    }
+    player->GetSession()->SendPacket(&packet);
   }
 
   uint32 SendKnownTalentEntries(Player* player)
@@ -3186,7 +3221,7 @@ public:
     BeginAppearanceCollectionSync(player, *state);
     state->LoginResyncTimer = APPEARANCE_LOGIN_RESYNC_DELAY_MS;
     SendActiveAppearances(player, *state);
-    SendOutfitCollection(player);
+    SendOutfitCollection(player, *state);
     SendAppearanceVisibility(player, *state);
     SendRealmInfo(player);
     SendVanityCollection(player, *state);
@@ -3750,7 +3785,7 @@ private:
 
       state->LoginResyncTimer = 0;
       SendActiveAppearances(player, *state);
-      SendOutfitCollection(player);
+      SendOutfitCollection(player, *state);
       SendAppearanceVisibility(player, *state);
       SendVanityCollection(player, *state);
     }
@@ -3785,7 +3820,7 @@ private:
     std::vector<uint32>().swap(state->PendingAppearanceAdds);
     state->NextPendingAppearanceAdd = 0;
     state->AppearanceAddTimer = 0;
-    SendOutfitCollection(player);
+    SendOutfitCollection(player, *state);
     ChatHandler(player->GetSession())
         .PSendSysMessage("Unlocked all {} local wardrobe appearances.", total);
 
@@ -3848,6 +3883,19 @@ private:
         uint32 categoryId = fields[0].Get<uint32>();
         if (categoryId < APPEARANCE_CATEGORY_COUNT)
           state.ActiveAppearances[categoryId] = fields[1].Get<uint32>();
+      } while (result->NextRow());
+    }
+
+    if (QueryResult result = CharacterDatabase.Query(
+            "SELECT `name`, `appearances` FROM `character_appearance_outfit` "
+            "WHERE `guid` = {}",
+            characterGuid)) {
+      do {
+        Field *fields = result->Fetch();
+        std::vector<uint32> &outfit = state.Outfits[fields[0].Get<std::string>()];
+        std::string const appearances = fields[1].Get<std::string>();
+        for (std::string_view token : Acore::Tokenize(appearances, ' ', false))
+          outfit.push_back(Acore::StringTo<uint32>(token).value_or(0));
       } while (result->NextRow());
     }
 
@@ -3971,6 +4019,15 @@ private:
         break;
       case CMSG_SET_CAN_SEE_APPEARANCES:
         HandleSetAppearanceVisibility(player, packet);
+        break;
+      case CMSG_SAVE_APPEARANCE_OUTFIT:
+        HandleSaveOutfit(player, packet);
+        break;
+      case CMSG_DELETE_APPEARANCE_OUTFIT:
+        HandleDeleteOutfit(player, packet);
+        break;
+      case CMSG_INSPECT_CHARACTER_ADVANCEMENT:
+        AscensionClassService::Instance().SendInspectResult(player, ObjectGuid(packet.read<uint64>()));
         break;
       case CMSG_EXTENSION_INITIALIZED:
         player->SendAllSpellChargeStates();
@@ -4199,23 +4256,101 @@ public:
     p << static_cast<uint32>(0);
     for (uint8 f : flags)
       p << f;
-    p << sWorld->GetRealmName();
     p << "";
+    p << realm.Name;
     p << REALM_INFO_ADDONS_ALLOWED;
 
     session->SendPacket(&p);
 
     LOG_INFO("coa",
-             "Realm info sent to {}: type {}, class model {}, realm {}.",
-             who, art, model, realm.Id.Realm);
+             "Realm info sent to {}: type {}, class model {}, realm {} ({}).",
+             who, art, model, realm.Id.Realm, realm.Name);
   }
 
 private:
-  void SendOutfitCollection(Player *player)
+  void SendOutfitCollection(Player *player, PlayerCollectionState const &state)
   {
-    WorldPacket packet(SMSG_APPEARANCE_OUTFIT_INFO, sizeof(uint32));
-    packet << static_cast<uint32>(0);
+    WorldPacket packet(SMSG_APPEARANCE_OUTFIT_INFO, sizeof(uint32) + state.Outfits.size() * 32);
+    packet << static_cast<uint32>(state.Outfits.size());
+    for (auto const &[name, appearances] : state.Outfits)
+    {
+      packet << name;
+      packet << static_cast<uint32>(appearances.size());
+      for (uint32 appearanceId : appearances)
+        packet << appearanceId;
+    }
     player->GetSession()->SendPacket(&packet);
+  }
+
+  static void SendOutfitResult(Player *player, uint16 opcode, char const *result)
+  {
+    WorldPacket packet(opcode, 40);
+    packet << result;
+    player->GetSession()->SendPacket(&packet);
+  }
+
+  static bool ValidOutfitName(std::string const &name)
+  {
+    return !name.empty() && name.size() <= MAX_APPEARANCE_OUTFIT_NAME_BYTES &&
+           std::none_of(name.begin(), name.end(), [](char c) { return static_cast<unsigned char>(c) < 0x20; });
+  }
+
+  void HandleSaveOutfit(Player *player, WorldPacket &packet)
+  {
+    std::shared_ptr<PlayerCollectionState> state = GetState(player);
+    if (!state)
+      return;
+
+    std::string name;
+    uint32 count = 0;
+    packet >> name >> count;
+    bool valid = ValidOutfitName(name) && count <= APPEARANCE_CATEGORY_COUNT &&
+                 (state->Outfits.contains(name) || state->Outfits.size() < MAX_APPEARANCE_OUTFITS);
+    std::vector<uint32> appearances;
+    for (uint32 index = 0; valid && index < count; ++index)
+    {
+      uint32 appearanceId = 0;
+      packet >> appearanceId;
+      valid = !appearanceId || state->CollectedAppearances.contains(appearanceId);
+      appearances.push_back(appearanceId);
+    }
+    if (!valid)
+    {
+      SendOutfitResult(player, SMSG_SAVE_APPEARANCE_OUTFIT_RESULT, "SAVE_APPEARANCE_OUTFIT_UNKNOWN");
+      return;
+    }
+
+    std::string serialized;
+    for (uint32 appearanceId : appearances)
+      serialized += (serialized.empty() ? "" : " ") + std::to_string(appearanceId);
+    std::string escaped = name;
+    CharacterDatabase.EscapeString(escaped);
+    CharacterDatabase.Execute("REPLACE INTO `character_appearance_outfit` (`guid`, `name`, `appearances`) "
+                              "VALUES ({}, '{}', '{}')",
+                              player->GetGUID().GetCounter(), escaped, serialized);
+    state->Outfits[name] = std::move(appearances);
+    SendOutfitResult(player, SMSG_SAVE_APPEARANCE_OUTFIT_RESULT, "SAVE_APPEARANCE_OUTFIT_OK");
+  }
+
+  void HandleDeleteOutfit(Player *player, WorldPacket &packet)
+  {
+    std::shared_ptr<PlayerCollectionState> state = GetState(player);
+    if (!state)
+      return;
+
+    std::string name;
+    packet >> name;
+    if (!state->Outfits.erase(name))
+    {
+      SendOutfitResult(player, SMSG_DELETE_APPEARANCE_OUTFIT_RESULT, "DELETE_APPEARANCE_OUTFIT_UNKNOWN");
+      return;
+    }
+
+    std::string escaped = name;
+    CharacterDatabase.EscapeString(escaped);
+    CharacterDatabase.Execute("DELETE FROM `character_appearance_outfit` WHERE `guid` = {} AND `name` = '{}'",
+                              player->GetGUID().GetCounter(), escaped);
+    SendOutfitResult(player, SMSG_DELETE_APPEARANCE_OUTFIT_RESULT, "DELETE_APPEARANCE_OUTFIT_OK");
   }
 
   void SendAppearanceVisibility(Player *player,
@@ -5156,7 +5291,7 @@ public:
       : PlayerScript(
             "AscensionCompatPlayerScript",
             {PLAYERHOOK_ON_LOGIN, PLAYERHOOK_ON_LOGOUT, PLAYERHOOK_ON_UPDATE,
-             PLAYERHOOK_ON_AFTER_SET_VISIBLE_ITEM_SLOT, PLAYERHOOK_ON_EQUIP,
+             PLAYERHOOK_ON_AFTER_SET_VISIBLE_ITEM_SLOT, PLAYERHOOK_ON_EQUIP, PLAYERHOOK_ON_DELETE,
              PLAYERHOOK_ON_STORE_NEW_ITEM, PLAYERHOOK_ON_CREATE_ITEM,
              PLAYERHOOK_ON_PLAYER_IS_CLASS, PLAYERHOOK_ON_LEVEL_CHANGED,
              PLAYERHOOK_ON_LEARN_SPELL, PLAYERHOOK_ON_FORGOT_SPELL,
@@ -5364,6 +5499,10 @@ public:
             RemoveAscensionPrimalistWeapons(player);
         }
     }
+
+  void OnPlayerDelete(ObjectGuid guid, uint32) override {
+    CharacterDatabase.Execute("DELETE FROM `character_appearance_outfit` WHERE `guid` = {}", guid.GetCounter());
+  }
 
   void OnPlayerLogout(Player *player) override {
     {
