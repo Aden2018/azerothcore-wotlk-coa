@@ -609,6 +609,22 @@ bool CanGrantAscensionRacialSpell(Player const* player, uint32 spellId)
     return !racial;
 }
 
+std::vector<AscensionSpecializationSwitchGuard>& SpecializationSwitchGuards()
+{
+    static std::vector<AscensionSpecializationSwitchGuard> guards;
+    return guards;
+}
+
+std::string SpecializationSwitchRefusal(Player* player, uint32 activeSpecializationId,
+                                        uint32 requestedSpecializationId)
+{
+    for (AscensionSpecializationSwitchGuard const& guard : SpecializationSwitchGuards())
+        if (std::string refusal = guard(player, activeSpecializationId, requestedSpecializationId);
+            !refusal.empty())
+            return refusal;
+    return {};
+}
+
 struct UpdateEntriesRefusal
 {
     char const* Result = "CA_UPDATE_ENTRIES_UNKNOWN";
@@ -616,7 +632,16 @@ struct UpdateEntriesRefusal
     uint32 Entry = 0;
     uint32 Rank = 0;
     std::string Detail;
+    bool Announce = false;
 };
+
+UpdateEntriesRefusal SpecializationSwitchRefused(uint32 specializationId, std::string reason)
+{
+    if (!reason.empty())
+        return { "CA_UPDATE_ENTRIES_NOT_TRAVERSIBLE", "CA_LEARN_MODE_RESTRICTED", 0, 0, std::move(reason), true };
+    return { "CA_UPDATE_ENTRIES_BAD_ENTRY", "CA_LEARN_WRONG_CLASS", 0, 0,
+             Acore::StringFormat("Specialization {} is not valid for your custom class.", specializationId) };
+}
 
 class AscensionClassService {
 public:
@@ -684,6 +709,13 @@ public:
     };
     reconcile(AscensionCompatData::LegacyGeneratedClassSpells);
     reconcile(AscensionCompatData::ClassSpells);
+    if (player->getClass() == CLASS_DEMON_HUNTER)
+      for (FelswornRiftGrant const& rift : FelswornHordeCapitalRifts)
+        if (rift.RequiredLevel > player->GetLevel() && player->HasSpell(rift.SpellId))
+        {
+          player->removeSpell(rift.SpellId, SPEC_MASK_ALL, false);
+          ++removed;
+        }
     if (removed)
       LOG_INFO("coa", "Reconciled {} proven class grants for {} against live level {}",
           removed, player->GetName(), uint32(player->GetLevel()));
@@ -1578,10 +1610,10 @@ public:
     bool const switching = uploaded.SpecId && uploaded.SpecId != activeSpecialization;
     if (switching && !uploaded.ChoosesTalents)
     {
-      if (SwitchSpecialization(player, uploaded.SpecId))
+      std::string reason;
+      if (SwitchSpecialization(player, uploaded.SpecId, &reason))
         return true;
-      refusal = { "CA_UPDATE_ENTRIES_BAD_ENTRY", "CA_LEARN_WRONG_CLASS", 0, 0,
-                  Acore::StringFormat("Specialization {} is not valid for your custom class.", uploaded.SpecId) };
+      refusal = SpecializationSwitchRefused(uploaded.SpecId, std::move(reason));
       return false;
     }
 
@@ -1653,10 +1685,9 @@ public:
       return false;
     }
 
-    if (switching && !SwitchSpecialization(player, uploaded.SpecId))
+    if (std::string reason; switching && !SwitchSpecialization(player, uploaded.SpecId, &reason))
     {
-      refusal = { "CA_UPDATE_ENTRIES_BAD_ENTRY", "CA_LEARN_WRONG_CLASS", 0, 0,
-                  Acore::StringFormat("Specialization {} is not valid for your custom class.", uploaded.SpecId) };
+      refusal = SpecializationSwitchRefused(uploaded.SpecId, std::move(reason));
       return false;
     }
 
@@ -1741,8 +1772,12 @@ public:
                player->GetName(), body.size());
     }
     else if (!ApplyKnownEntriesUpload(player, upload, refusal))
+    {
       LOG_INFO("coa", "Refused known-entries upload of {} record(s) from {}: {} {} {}",
                upload.size(), player->GetName(), refusal.Result, refusal.Learn, refusal.Detail);
+      if (refusal.Announce)
+        ChatHandler(player->GetSession()).SendSysMessage(refusal.Detail);
+    }
     else
       refusal.Result = "CA_UPDATE_ENTRIES_OK";
     SendCharacterAdvancementKnownEntries(player);
@@ -1899,7 +1934,7 @@ public:
     return restored;
   }
 
-  bool SwitchSpecialization(Player *player, uint32 specializationId) {
+  bool SwitchSpecialization(Player *player, uint32 specializationId, std::string *refusal = nullptr) {
     if (!IsAscensionCustomClass(player) || !specializationId)
       return false;
 
@@ -1915,6 +1950,15 @@ public:
       return false;
 
     uint32 const previousSpecialization = GetActiveSpecialization(player);
+    if (previousSpecialization && previousSpecialization != specializationId)
+      if (std::string reason = SpecializationSwitchRefusal(player, previousSpecialization, specializationId);
+          !reason.empty())
+      {
+        if (refusal)
+          *refusal = std::move(reason);
+        return false;
+      }
+
     if (!previousSpecialization || previousSpecialization == specializationId)
     {
       {
@@ -6522,6 +6566,37 @@ bool SwitchAscensionSpecialization(Player* player, uint32 specializationId)
 {
     return player && ascensionCompatConfig.GetConfigValue<bool>(AscensionCompatConfig::ENABLED) &&
         AscensionClassService::Instance().SwitchSpecialization(player, specializationId);
+}
+
+void AddAscensionSpecializationSwitchGuard(AscensionSpecializationSwitchGuard guard)
+{
+    if (guard)
+        SpecializationSwitchGuards().push_back(std::move(guard));
+}
+
+uint32 ForgetAscensionClassTalents(Player* player)
+{
+    if (!player || !IsAscensionCustomClass(player))
+        return 0;
+
+    uint32 removed = 0;
+    for (AscensionCompatData::CoATalentEntry const& entry : AscensionCompatData::CoATalentEntries)
+    {
+        if (entry.ClassId != player->getClass())
+            continue;
+
+        for (uint32 spellId : entry.SpellIds)
+            if (spellId && player->HasSpell(spellId))
+            {
+                player->removeSpell(spellId, SPEC_MASK_ALL, false);
+                ++removed;
+            }
+    }
+
+    for (uint32 const tree : { uint32(0), GetAscensionActiveSpecialization(player) })
+        if (player->FindPlayerSettings(AscensionClassService::BuildSetting(tree)))
+            AscensionClassService::StoreBuild(player, tree, {});
+    return removed;
 }
 
 static AscensionCompatData::CoATalentEntry const* FindAscensionTalentEntry(uint32 entryId)
