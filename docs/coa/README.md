@@ -418,6 +418,11 @@ supports. Client binaries are maintained outside this repository.
   `SAVE_/DELETE_APPEARANCE_OUTFIT_OK` or `_UNKNOWN` (0x069F / 0x06A1) and stored in
   `character_appearance_outfit`; `SMSG_APPEARANCE_OUTFIT_INFO` (0x069D) lists them at login.
   A saved outfit may name only collected appearances; names are 1-64 bytes, 100 per character.
+- `SMSG_UPDATE_CONFIGS` (0x058D) is sent once per login with every client setting; see
+  [client configuration](client-xp-config.md).
+- `SMSG_ACCOUNT_INFO` (0x09BB) is sent at login with the account's GM level and characters.
+- Help menu tickets use the ticket packets 0x0701-0x071E and the `.support` GM commands; see
+  [player tickets](player-tickets.md).
 
 The `gtOCTRegenHP`, `gtRegenHPPerSpt` and `gtRegenMPPerSpt` client files each contain
 3,200 single-float rows indexed by class and level. Their SQL overlay tables are empty,
