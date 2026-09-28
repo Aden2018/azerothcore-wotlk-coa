@@ -153,6 +153,8 @@ constexpr std::size_t VANITY_STORE_RECORD_DWORDS = 16;
 constexpr uint16 SMSG_CHARACTER_ADVANCEMENT_ACTIVE_SPEC = 0x0725;
 constexpr uint16 SMSG_CHARACTER_ADVANCEMENT_KNOWN_ENTRIES = 0x0726;
 constexpr uint16 CMSG_CHARACTER_ADVANCEMENT_KNOWN_ENTRIES = 0x0727;
+constexpr uint16 SMSG_CHARACTER_ADVANCEMENT_PURGE_TALENTS_RESULT = 0x072B;
+constexpr uint16 SMSG_CHARACTER_ADVANCEMENT_UPDATE_ENTRIES_RESULT = 0x072C;
 constexpr uint16 CMSG_INSPECT_CHARACTER_ADVANCEMENT = 0x06E1;
 constexpr uint16 SMSG_INSPECT_CHARACTER_ADVANCEMENT_RESULT = 0x06E2;
 constexpr uint16 CMSG_MISSILE_FIRE_POSITION = 0x09C7;
@@ -606,6 +608,15 @@ bool CanGrantAscensionRacialSpell(Player const* player, uint32 spellId)
         }
     return !racial;
 }
+
+struct UpdateEntriesRefusal
+{
+    char const* Result = "CA_UPDATE_ENTRIES_UNKNOWN";
+    char const* Learn = "";
+    uint32 Entry = 0;
+    uint32 Rank = 0;
+    std::string Detail;
+};
 
 class AscensionClassService {
 public:
@@ -1554,12 +1565,12 @@ public:
   }
 
   bool ApplyKnownEntriesUpload(Player* player, std::vector<AscensionCoATalentState::KnownEntry> const& upload,
-                               std::string& error)
+                               UpdateEntriesRefusal& refusal)
   {
     AscensionCoATalentState::UploadedSpecialization const uploaded = AscensionCoATalentState::SpecializationOf(upload);
     if (uploaded.Mixed)
     {
-      error = "The uploaded build mixes specializations.";
+      refusal = { "CA_UPDATE_ENTRIES_BAD_ENTRY", "", 0, 0, "The uploaded build mixes specializations." };
       return false;
     }
 
@@ -1569,7 +1580,8 @@ public:
     {
       if (SwitchSpecialization(player, uploaded.SpecId))
         return true;
-      error = Acore::StringFormat("Specialization {} is not valid for your custom class.", uploaded.SpecId);
+      refusal = { "CA_UPDATE_ENTRIES_BAD_ENTRY", "CA_LEARN_WRONG_CLASS", 0, 0,
+                  Acore::StringFormat("Specialization {} is not valid for your custom class.", uploaded.SpecId) };
       return false;
     }
 
@@ -1579,29 +1591,33 @@ public:
       AscensionCompatData::CoATalentEntry const* entry = FindTalentEntry(item.EntryId);
       if (!entry || entry->ClassId != player->getClass())
       {
-        error = Acore::StringFormat("Talent entry {} does not belong to your custom class.", item.EntryId);
+        refusal = { "CA_UPDATE_ENTRIES_BAD_ENTRY", "CA_LEARN_WRONG_CLASS", item.EntryId, item.Rank,
+                    Acore::StringFormat("Talent entry {} does not belong to your custom class.", item.EntryId) };
         return false;
       }
       if (!entry->AECost && !entry->TECost && !GetSelectableFreeGroup(entry->EntryId))
         continue;
       if (item.Rank > entry->SpellCount)
       {
-        error = Acore::StringFormat("Talent entry {} only has {} rank(s).", entry->EntryId,
-                                    uint32(entry->SpellCount));
+        refusal = { "CA_UPDATE_ENTRIES_BAD_ENTRY", "", entry->EntryId, item.Rank,
+                    Acore::StringFormat("Talent entry {} only has {} rank(s).", entry->EntryId,
+                                        uint32(entry->SpellCount)) };
         return false;
       }
       if (item.Rank > 0)
       {
         if (player->GetLevel() < entry->RequiredLevel)
         {
-          error = Acore::StringFormat("Talent entry {} requires level {}.", entry->EntryId,
-                                      uint32(entry->RequiredLevel));
+          refusal = { "CA_UPDATE_ENTRIES_NOT_TRAVERSIBLE", "CA_LEARN_LOW_LEVEL", entry->EntryId, item.Rank,
+                      Acore::StringFormat("Talent entry {} requires level {}.", entry->EntryId,
+                                          uint32(entry->RequiredLevel)) };
           return false;
         }
         if (!sSpellMgr->GetSpellInfo(entry->SpellIds[item.Rank - 1]))
         {
-          error = Acore::StringFormat("Talent entry {} rank {} references a missing server spell.",
-                                      entry->EntryId, item.Rank);
+          refusal = { "CA_UPDATE_ENTRIES_BAD_ENTRY", "CA_LEARN_BAD_ABILITY", entry->EntryId, item.Rank,
+                      Acore::StringFormat("Talent entry {} rank {} references a missing server spell.",
+                                          entry->EntryId, item.Rank) };
           return false;
         }
       }
@@ -1621,20 +1637,26 @@ public:
 
     uint32 classBudget = 0;
     uint32 specializationBudget = 0;
-    if (!TalentBudget(player, classBudget, specializationBudget, error))
+    if (!TalentBudget(player, classBudget, specializationBudget, refusal.Detail))
+    {
+      refusal.Result = "CA_UPDATE_ENTRIES_UNKNOWN";
       return false;
+    }
     AscensionCoATalentState::SpentPoints const spent = AscensionCoATalentState::Spent(priced);
     if (spent.AE > classBudget || spent.TE > specializationBudget)
     {
-      error = Acore::StringFormat(
-          "That build spends {} class and {} specialization point(s); level {} has {} and {}.", spent.AE,
-          spent.TE, uint32(player->GetLevel()), classBudget, specializationBudget);
+      refusal = { "CA_UPDATE_ENTRIES_NOT_TRAVERSIBLE",
+                  spent.AE > classBudget ? "CA_LEARN_MISSING_AE" : "CA_LEARN_MISSING_TE", 0, 0,
+                  Acore::StringFormat(
+                      "That build spends {} class and {} specialization point(s); level {} has {} and {}.",
+                      spent.AE, spent.TE, uint32(player->GetLevel()), classBudget, specializationBudget) };
       return false;
     }
 
     if (switching && !SwitchSpecialization(player, uploaded.SpecId))
     {
-      error = Acore::StringFormat("Specialization {} is not valid for your custom class.", uploaded.SpecId);
+      refusal = { "CA_UPDATE_ENTRIES_BAD_ENTRY", "CA_LEARN_WRONG_CLASS", 0, 0,
+                  Acore::StringFormat("Specialization {} is not valid for your custom class.", uploaded.SpecId) };
       return false;
     }
 
@@ -1654,11 +1676,14 @@ public:
     std::stable_sort(changes.begin(), changes.end(),
                      [](auto const& left, auto const& right) { return (left.second == 0) > (right.second == 0); });
     for (auto const& [entry, rank] : changes)
-      if (!SetTalentRank(player, *entry, rank, error, false))
+      if (!SetTalentRank(player, *entry, rank, refusal.Detail, false))
       {
         LOG_ERROR("coa",
                   "Known-entries upload for {} failed after validation at entry {} rank {}: {}", player->GetName(),
-                  entry->EntryId, rank, error);
+                  entry->EntryId, rank, refusal.Detail);
+        refusal.Result = "CA_UPDATE_ENTRIES_UNKNOWN";
+        refusal.Entry = entry->EntryId;
+        refusal.Rank = rank;
         return false;
       }
     return true;
@@ -1698,30 +1723,32 @@ public:
         HandleKnownEntriesUpload(player, request.Upload);
         continue;
       }
-      ResetPaidTalents(player);
+      WorldPacket result(SMSG_CHARACTER_ADVANCEMENT_PURGE_TALENTS_RESULT, 40);
+      result << (ResetPaidTalents(player) ? "CA_PURGE_TALENTS_OK" : "CA_PURGE_TALENTS_NO_KNOWN_TALENTS");
       SendCharacterAdvancementKnownEntries(player);
+      player->SendDirectMessage(&result);
     }
   }
 
   void HandleKnownEntriesUpload(Player* player, std::vector<uint8> const& body)
   {
     std::vector<AscensionCoATalentState::KnownEntry> upload;
+    UpdateEntriesRefusal refusal;
     if (!AscensionCoATalentState::ParseKnownEntriesUpload(body.data(), body.size(), upload))
     {
+      refusal.Result = "CA_UPDATE_ENTRIES_UNKNOWN";
       LOG_WARN("coa", "Malformed Ascension known-entries upload from {} payload={} bytes",
                player->GetName(), body.size());
     }
+    else if (!ApplyKnownEntriesUpload(player, upload, refusal))
+      LOG_INFO("coa", "Refused known-entries upload of {} record(s) from {}: {} {} {}",
+               upload.size(), player->GetName(), refusal.Result, refusal.Learn, refusal.Detail);
     else
-    {
-      std::string error;
-      if (!ApplyKnownEntriesUpload(player, upload, error))
-      {
-        ChatHandler(player->GetSession()).SendSysMessage(error);
-        LOG_INFO("coa", "Refused known-entries upload of {} record(s) from {}: {}",
-                 upload.size(), player->GetName(), error);
-      }
-    }
+      refusal.Result = "CA_UPDATE_ENTRIES_OK";
     SendCharacterAdvancementKnownEntries(player);
+    WorldPacket result(SMSG_CHARACTER_ADVANCEMENT_UPDATE_ENTRIES_RESULT, 64);
+    result << refusal.Result << refusal.Learn << refusal.Entry << refusal.Rank;
+    player->SendDirectMessage(&result);
   }
 
   uint32 GetActiveSpecialization(Player const *player) const {
