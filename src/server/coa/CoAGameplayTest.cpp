@@ -598,7 +598,7 @@ void ObservePacket(Actor& actor, WorldPacket const& packet)
         if (caster == actor.guid)
             actor.castPushbackMs += delay;
     }
-    if (packet.GetOpcode() == SMSG_CAST_FAILED)
+    if (packet.GetOpcode() == SMSG_CAST_FAILED || packet.GetOpcode() == SMSG_PET_CAST_FAILED)
     {
         WorldPacket response(packet);
         uint8 count, reason;
@@ -2318,7 +2318,7 @@ private:
         if (metric == "pet_entry" || metric == "pet_aura_stacks" || metric == "pet_aura_amount" ||
             metric == "pet_aura_amplitude_ms" || metric == "pet_aura_duration_ms" || metric == "pet_max_health" ||
             metric == "pet_attack_power" || metric == "pet_run_speed_rate" || metric == "pet_is_banker" ||
-            metric == "pet_display" || metric == "pet_scale")
+            metric == "pet_display" || metric == "pet_scale" || metric == "pet_knows_spell")
         {
             Creature* pet = player->GetGuardianPet();
             if (!pet)
@@ -2333,6 +2333,8 @@ private:
                 return pet ? pet->GetDisplayId() : 0;
             if (metric == "pet_scale")
                 return pet ? double(pet->GetObjectScale()) : 0.0;
+            if (metric == "pet_knows_spell")
+                return pet && pet->IsPet() && pet->ToPet()->HasSpell(spell);
             if (!pet && (metric == "pet_aura_stacks" || metric == "pet_aura_amount" ||
                 metric == "pet_aura_amplitude_ms" || metric == "pet_aura_duration_ms"))
                 return 0;
@@ -3344,8 +3346,9 @@ private:
         {
             _actors.at(step.get<std::string>("actor")).castFailureReason.erase(spell);
             SpellCastTargets targets;
-            Unit* caster = action == "cast_charm" ? player->GetCharm() : player;
-            Require(caster != nullptr, "Player has no charmed unit");
+            Unit* caster = action != "cast_charm" ? player :
+                step.get<bool>("pet", false) ? static_cast<Unit*>(player->GetPet()) : player->GetCharm();
+            Require(caster != nullptr, "Player has no charmed unit or pet");
             Unit* target = step.get_optional<std::string>("target") ? GetUnit(step.get<std::string>("target")) : caster;
             if (step.get<bool>("target_pet", false))
             {
