@@ -1,5 +1,7 @@
 /* Copyright (C) 2016+ AzerothCore, GNU AGPL v3. */
 #include "AscensionRangerTalents.h"
+#include "Creature.h"
+#include "ObjectMgr.h"
 #include "Player.h"
 #include "ScriptMgr.h"
 #include "Spell.h"
@@ -8,6 +10,7 @@
 #include "SpellMgr.h"
 #include "SpellScript.h"
 #include "SpellScriptLoader.h"
+#include "TemporarySummon.h"
 #include <algorithm>
 #include <array>
 #include <limits>
@@ -84,6 +87,42 @@ void ForEachPresentCompanion(Unit* owner, Visitor&& visit)
         }
     }
 }
+
+class ranger_wingman_companions : public PlayerScript
+{
+public:
+    ranger_wingman_companions() : PlayerScript("ranger_wingman_companions",
+        {PLAYERHOOK_ON_AFTER_GUARDIAN_INIT_STATS_FOR_LEVEL}) { }
+
+    void OnPlayerAfterGuardianInitStatsForLevel(Player* player, Guardian* guardian) override
+    {
+        if (!player || player->getClass() != CLASS_RANGER || !IsWingmanCompanion(guardian))
+            return;
+
+        CreatureTemplate const* info = guardian->GetCreatureTemplate();
+        CreatureBaseStats const* stats = sObjectMgr->GetCreatureBaseStats(guardian->GetLevel(), info->unit_class);
+        float const damage = stats->GenerateBaseDamage(info);
+        for (WeaponAttackType attack : {BASE_ATTACK, OFF_ATTACK, RANGED_ATTACK})
+        {
+            guardian->SetBaseWeaponDamage(attack, MINDAMAGE, damage);
+            guardian->SetBaseWeaponDamage(attack, MAXDAMAGE, damage * 1.5f);
+        }
+        guardian->SetStatFlatModifier(UNIT_MOD_ATTACK_POWER, BASE_VALUE, float(stats->AttackPower));
+        guardian->SetStatFlatModifier(UNIT_MOD_ATTACK_POWER_RANGED, BASE_VALUE, float(stats->RangedAttackPower));
+        guardian->UpdateAllStats();
+    }
+
+    static bool IsWingmanCompanion(Creature const* creature)
+    {
+        if (!creature)
+            return false;
+
+        for (WingmanCompanion const& companion : WingmanCompanions)
+            if (creature->GetEntry() == companion.Entry)
+                return true;
+        return false;
+    }
+};
 
 bool HasFullAdvantage(Player const* player)
 {
@@ -393,5 +432,6 @@ void AddSC_AscensionRangerTalents()
     RegisterSpellScript(spell_ascension_ranger_frenzy);
     RegisterSpellScript(aura_ascension_ranger_pilfering);
     RegisterSpellScript(aura_ascension_ranger_guidance);
+    new ranger_wingman_companions();
     new ranger_swiftshot_hits();
 }

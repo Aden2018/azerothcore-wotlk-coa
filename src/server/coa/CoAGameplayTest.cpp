@@ -2260,6 +2260,25 @@ private:
                 return double(creature->GetObjectScale());
             return 0.0;
         }
+        if (metric == "owned_creature_weapon_damage_min")
+        {
+            uint32 entry = step.get<uint32>("entry");
+            Require(sObjectMgr->GetCreatureTemplate(entry) != nullptr, "Unknown creature entry in metric");
+            std::list<Creature*> creatures;
+            player->GetCreatureListWithEntryInGrid(creatures, entry, 100.0f);
+            double lowest = 0.0;
+            bool found = false;
+            for (Creature* creature : creatures)
+            {
+                if (!creature->IsAlive() || creature->GetOwnerGUID() != player->GetGUID() ||
+                    !player->InSamePhase(creature))
+                    continue;
+                double const damage = double(creature->GetFloatValue(UNIT_FIELD_MINDAMAGE));
+                lowest = found ? std::min(lowest, damage) : damage;
+                found = true;
+            }
+            return lowest;
+        }
         if (metric == "bank_shows")
             return double(_actors.at(step.get<std::string>("actor")).bankShows);
         if (metric == "system_messages")
