@@ -20,6 +20,7 @@
 #include "Battleground.h"
 #include "CoA.Prestige.API.h"
 #include "CoAPrestigeRules.h"
+#include "CoASpellbook.h"
 #include "Chat.h"
 #include "Config.h"
 #include "CreatureScript.h"
@@ -348,6 +349,12 @@ namespace
             {
                 chains.insert(sSpellMgr->GetFirstSpellInChain(ability.SpellId));
                 player->removeSpell(ability.SpellId, SPEC_MASK_ALL, false);
+            }
+        for (uint32 const spellId : CoASpellbook::UpgradeRanksAbove(player, level))
+            if (player->HasSpell(spellId))
+            {
+                chains.insert(sSpellMgr->GetFirstSpellInChain(spellId));
+                player->removeSpell(spellId, SPEC_MASK_ALL, false);
             }
         return chains;
     }
