@@ -1622,7 +1622,7 @@ public:
 
     uint32 const activeSpecialization = GetActiveSpecialization(player);
     bool const switching = uploaded.SpecId && uploaded.SpecId != activeSpecialization;
-    if (switching && !uploaded.ChoosesTalents)
+    if (switching && !uploaded.ChoosesTalents && activeSpecialization)
     {
       std::string reason;
       if (SwitchSpecialization(player, uploaded.SpecId, &reason))

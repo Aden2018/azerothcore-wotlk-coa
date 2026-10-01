@@ -51,7 +51,7 @@ METRICS = {
     'owned_creature_scale', 'unit_scale', 'combat_reach', 'token_count', 'item_sell_price', 'creature_model_scale', 'creature_model_display',
     'taxi_node', 'in_flight', 'taxi_destination', 'stabled_pet_count', 'stable_result', 'pet_rows', 'instance_binds_listed', 'pet_entry', 'pet_aura_stacks', 'pet_aura_duration_ms', 'pet_is_banker', 'pet_display',
     'pet_scale', 'pet_knows_spell', 'owned_creature_count', 'owned_creature_weapon_damage_min',
-    'charm_entry', 'charm_aura_stacks', 'controls_self', 'private_instance',
+    'charm_entry', 'charm_aura_stacks', 'controls_self', 'viewpoint_entry', 'seer_entry', 'private_instance',
     'dynamic_object', 'dynamic_object_duration_ms', 'gossip_options', 'gossip_option_text',
     'owned_gameobject_count', 'gameobject_remaining_ms', 'at_homebind',
     'spellbook_rows', 'spellbook_offers_spell', 'spellbook_covers_spell', 'spellbook_learned_alerts',
@@ -163,6 +163,7 @@ ACTIONS = {
     'set_money': ({'actor', 'value'}, {'actor', 'value'}),
     'set_phase': ({'actor'}, {'actor', 'value'}),
     'use_nearby_gameobject': ({'actor', 'entry'}, {'actor', 'entry'}),
+    'attack_owned_creature': ({'actor', 'target', 'entry'}, {'actor', 'target', 'entry'}),
     'attack_nearby': ({'actor', 'entry'}, {'actor', 'entry', 'kill'}),
     'loot_nearby': ({'actor', 'entry'}, {'actor', 'entry'}),
     'loot_creature': ({'actor', 'target'}, {'actor', 'target'}),
@@ -310,7 +311,8 @@ def validate(scenario):
                 number(step['language'], f'{where}.language', 0, 2**32 - 1, True)
         if 'actor' in step:
             require(step['actor'] in actor_ids, f'{where}: unknown actor')
-            require(action in {'snapshot', 'assert', 'set_health', 'cast'} or step['actor'] in player_ids,
+            require(action in {'snapshot', 'assert', 'set_health', 'cast', 'attack_owned_creature'}
+                    or step['actor'] in player_ids,
                     f'{where}: action needs a player')
             if action == 'cast' and step['actor'] not in player_ids:
                 require('destination' not in step, f'{where}: creature cast has no destination')
@@ -353,6 +355,9 @@ def validate(scenario):
                 number(step[key], f'{where}.{key}', 0, 2**32 - 1, True)
         if action == 'who' and 'target' in step:
             require(step['target'] in player_ids, f'{where}: Who name filter needs a player')
+        if action == 'attack_owned_creature':
+            require(step['actor'] not in player_ids and step['target'] in player_ids,
+                    f'{where}: attack needs a creature and a player who owns the target')
         if action == 'group':
             require(step['target'] in player_ids and step['target'] != step['actor'],
                     f'{where}: group needs another player')

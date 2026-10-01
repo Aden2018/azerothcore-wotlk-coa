@@ -222,6 +222,7 @@ void ApplyContracts(SpellInfo* info)
         info->Effects[2].SpellClassMask = flag96(67108864, 0, 8388608);
     if (id == Bless)
     {
+        info->AttributesEx5 &= ~SPELL_ATTR5_LIMIT_N;
         info->Effects[0].ApplyAuraName = SPELL_AURA_PERIODIC_DUMMY;
         info->Effects[0].TriggerSpell = 0;
         dummy(2);

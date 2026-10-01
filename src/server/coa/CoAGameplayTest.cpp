@@ -2259,6 +2259,11 @@ private:
             return player->GetMap()->IsScriptedPrivateInstance();
         if (metric == "controls_self")
             return player->m_mover == player;
+        if (metric == "viewpoint_entry" || metric == "seer_entry")
+        {
+            WorldObject* object = metric == "viewpoint_entry" ? player->GetViewpoint() : player->GetSeer();
+            return object ? object->GetEntry() : 0;
+        }
         if (metric == "at_homebind")
             return player->GetMapId() == player->m_homebindMapId &&
                 player->GetExactDist(player->m_homebindX, player->m_homebindY, player->m_homebindZ) <= 5.0f;
@@ -2992,6 +2997,27 @@ private:
             return;
         }
         std::string id = step.get<std::string>("actor");
+        if (action == "attack_owned_creature")
+        {
+            Creature* attacker = GetUnit(id)->ToCreature();
+            Player* owner = GetPlayer(step.get<std::string>("target"));
+            Require(attacker && attacker->AI(), "Owned-creature attack needs a creature AI");
+            std::list<Creature*> creatures;
+            owner->GetCreatureListWithEntryInGrid(creatures, step.get<uint32>("entry"), 100.0f);
+            creatures.remove_if([owner, attacker](Creature* creature)
+            {
+                return !creature->IsAlive() || creature->GetOwnerGUID() != owner->GetGUID() ||
+                    !owner->InSamePhase(creature) || !attacker->IsValidAttackTarget(creature);
+            });
+            Require(!creatures.empty(), "No valid owned creature for the attacker");
+            creatures.sort([attacker](Creature* first, Creature* second)
+            {
+                return attacker->GetExactDist2d(first) < attacker->GetExactDist2d(second);
+            });
+            attacker->AI()->AttackStart(creatures.front());
+            record.put("target_entry", creatures.front()->GetEntry());
+            return;
+        }
         if (action == "set_health" && !_actors.count(id))
         {
             Unit* creature = GetUnit(id);
