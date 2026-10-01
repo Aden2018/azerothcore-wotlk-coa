@@ -17,6 +17,7 @@
 
 #include "Trainer.h"
 #include "Creature.h"
+#include "DBCStores.h"
 #include "NPCPackets.h"
 #include "ObjectMgr.h"
 #include "Player.h"
@@ -44,14 +45,81 @@ namespace
     constexpr uint32 WILDCARD_RANK_TRAINER_ID = std::numeric_limits<uint32>::max();
     Trainer::WildcardRankRows WildcardRankRowsOf = nullptr;
 
-    bool RaisesProfessionAboveStep(SpellInfo const* spellInfo, uint16 maxStep)
+    uint8 ProfessionExpansion(uint32 skill)
+    {
+        switch (skill)
+        {
+            case SKILL_JEWELCRAFTING:
+                return EXPANSION_THE_BURNING_CRUSADE;
+            case SKILL_INSCRIPTION:
+                return EXPANSION_WRATH_OF_THE_LICH_KING;
+            default:
+                return EXPANSION_CLASSIC;
+        }
+    }
+
+    bool TeachesProfessionBeyondExpansion(SpellInfo const* spellInfo, uint8 expansion)
     {
         for (SpellEffectInfo const& spellEffectInfo : spellInfo->GetEffects())
             if ((spellEffectInfo.IsEffect(SPELL_EFFECT_SKILL_STEP) || spellEffectInfo.IsEffect(SPELL_EFFECT_SKILL))
-                && IsProfessionSkill(spellEffectInfo.MiscValue) && spellEffectInfo.CalcValue() > maxStep)
+                && IsProfessionSkill(spellEffectInfo.MiscValue)
+                && (spellEffectInfo.CalcValue() > GetMaxProfessionSkillStep(expansion)
+                    || ProfessionExpansion(spellEffectInfo.MiscValue) > expansion))
                 return true;
 
         return false;
+    }
+
+    bool TeachesOneProfession(Trainer::Trainer const& trainer)
+    {
+        uint32 profession = 0;
+        for (Trainer::Spell const& spell : trainer.GetSpells())
+        {
+            if (!spell.ReqSkillLine)
+                continue;
+
+            if (profession && profession != spell.ReqSkillLine)
+                return false;
+
+            profession = spell.ReqSkillLine;
+        }
+
+        return profession != 0;
+    }
+
+    // A recipe belongs to the earliest expansion whose map holds a profession trainer that teaches it: Fel Iron
+    // patterns are taught in Outland and Northrend only, Thorium ones in Kalimdor and the Eastern Kingdoms too.
+    // Trainers teaching several professions (the Books of Artisans) are not evidence of anything.
+    // ponytail: built once from the spawns at first use, a `.reload` of trainers or creatures does not rebuild it
+    uint8 RecipeExpansion(uint32 spellId)
+    {
+        static std::unordered_map<uint32, uint8> const expansions = []
+        {
+            std::unordered_map<uint32, uint8> result;
+            for (auto const& [spawnId, data] : sObjectMgr->GetAllCreatureData())
+            {
+                Trainer::Trainer const* trainer = sObjectMgr->GetTrainer(data.id);
+                MapEntry const* map = sMapStore.LookupEntry(data.mapid);
+                if (!trainer || !map || !TeachesOneProfession(*trainer))
+                    continue;
+
+                uint8 const expansion = uint8(map->Expansion());
+                for (Trainer::Spell const& spell : trainer->GetSpells())
+                {
+                    if (!spell.ReqSkillLine)
+                        continue;
+
+                    auto [itr, inserted] = result.try_emplace(spell.SpellId, expansion);
+                    if (!inserted)
+                        itr->second = std::min(itr->second, expansion);
+                }
+            }
+
+            return result;
+        }();
+
+        auto itr = expansions.find(spellId);
+        return itr != expansions.end() ? itr->second : EXPANSION_CLASSIC;
     }
 }
 
@@ -214,10 +282,14 @@ namespace Trainer
         if (player->GetLevel() < trainerSpell->ReqLevel)
             return SpellState::Unavailable;
 
-        // check expansion requirement of profession ranks
-        uint16 maxProfessionStep = GetMaxProfessionSkillStep(player->GetSession()->Expansion());
+        // check expansion requirement of professions, their ranks and their recipes
+        uint8 const expansion = player->GetSession()->Expansion();
+        if (ProfessionExpansion(trainerSpell->ReqSkillLine) > expansion
+            || RecipeExpansion(trainerSpell->SpellId) > expansion)
+            return SpellState::Unavailable;
+
         SpellInfo const* trainerSpellInfo = sSpellMgr->AssertSpellInfo(trainerSpell->SpellId);
-        if (RaisesProfessionAboveStep(trainerSpellInfo, maxProfessionStep))
+        if (TeachesProfessionBeyondExpansion(trainerSpellInfo, expansion))
             return SpellState::Unavailable;
 
         // check ranks
@@ -229,7 +301,7 @@ namespace Trainer
                 continue;
 
             if (SpellInfo const* learnedSpellInfo = sSpellMgr->GetSpellInfo(spellEffectInfo.TriggerSpell))
-                if (RaisesProfessionAboveStep(learnedSpellInfo, maxProfessionStep))
+                if (TeachesProfessionBeyondExpansion(learnedSpellInfo, expansion))
                     return SpellState::Unavailable;
 
             hasLearnSpellEffect = true;
