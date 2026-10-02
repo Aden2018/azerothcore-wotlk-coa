@@ -15,21 +15,45 @@
 --
 -- Mapping: 10185->10189 (Normal), 10186->10190 (Heroic),
 --          10187->10191 (Mythic), 10188->10192 (Ascended)
+--
+-- CORRECTED 2026-10-03 (confirmed from Errors.log: "Could not update the World
+-- database"): AzerothCore's updater reapplies a pending_db_world file in full every
+-- time its content hash changes - not just once ever - and this file's rename WAS NOT
+-- idempotent: replayed against an already-migrated DB (10189-10192 already exist), the
+-- CASE-based rename tries to move 10185 -> 10189 again and hits a primary-key
+-- collision, which aborts the ENTIRE world database update (every later pending file,
+-- however correct, never gets a chance to run) and can stop worldserver from starting
+-- at all. Every rename below is now guarded to skip entirely once 10189 already exists
+-- (meaning the rename already happened), and a stale leftover 10185 row (which predates
+-- the real pillars at 10186-10188 and is never legitimate once renamed) is cleaned up
+-- after the fact instead of being renamed again.
 
 UPDATE `creature_template` SET
     `entry` = CASE `entry` WHEN 10185 THEN 10189 WHEN 10186 THEN 10190 WHEN 10187 THEN 10191 WHEN 10188 THEN 10192 END,
     `difficulty_entry_1` = CASE `difficulty_entry_1` WHEN 10186 THEN 10190 ELSE `difficulty_entry_1` END,
     `difficulty_entry_2` = CASE `difficulty_entry_2` WHEN 10187 THEN 10191 ELSE `difficulty_entry_2` END,
     `difficulty_entry_3` = CASE `difficulty_entry_3` WHEN 10188 THEN 10192 ELSE `difficulty_entry_3` END
-WHERE `entry` IN (10185,10186,10187,10188);
+WHERE `entry` IN (10185,10186,10187,10188)
+  AND NOT EXISTS (SELECT 1 FROM (SELECT `entry` FROM `creature_template`) AS already WHERE already.`entry` = 10189);
+
+DELETE FROM `creature_template` WHERE `entry` = 10185
+  AND EXISTS (SELECT 1 FROM (SELECT `entry` FROM `creature_template`) AS already WHERE already.`entry` = 10189);
 
 UPDATE `creature_template_model` SET
     `CreatureID` = CASE `CreatureID` WHEN 10185 THEN 10189 WHEN 10186 THEN 10190 WHEN 10187 THEN 10191 WHEN 10188 THEN 10192 END
-WHERE `CreatureID` IN (10185,10186,10187,10188);
+WHERE `CreatureID` IN (10185,10186,10187,10188)
+  AND NOT EXISTS (SELECT 1 FROM (SELECT `CreatureID` FROM `creature_template_model`) AS already WHERE already.`CreatureID` = 10189);
+
+DELETE FROM `creature_template_model` WHERE `CreatureID` = 10185
+  AND EXISTS (SELECT 1 FROM (SELECT `CreatureID` FROM `creature_template_model`) AS already WHERE already.`CreatureID` = 10189);
 
 UPDATE `creature_template_movement` SET
     `CreatureId` = CASE `CreatureId` WHEN 10185 THEN 10189 WHEN 10186 THEN 10190 WHEN 10187 THEN 10191 WHEN 10188 THEN 10192 END
-WHERE `CreatureId` IN (10185,10186,10187,10188);
+WHERE `CreatureId` IN (10185,10186,10187,10188)
+  AND NOT EXISTS (SELECT 1 FROM (SELECT `CreatureId` FROM `creature_template_movement`) AS already WHERE already.`CreatureId` = 10189);
+
+DELETE FROM `creature_template_movement` WHERE `CreatureId` = 10185
+  AND EXISTS (SELECT 1 FROM (SELECT `CreatureId` FROM `creature_template_movement`) AS already WHERE already.`CreatureId` = 10189);
 
 -- smart_scripts for entryorguid 10185-10188/10189-10192 is established fresh by
 -- rev_20261002_04_basalthane_smartai_full_block_consolidation.sql as a full
@@ -39,8 +63,14 @@ WHERE `CreatureId` IN (10185,10186,10187,10188);
 
 UPDATE `coa_boss_flex` SET
     `entry` = CASE `entry` WHEN 10185 THEN 10189 WHEN 10186 THEN 10190 WHEN 10187 THEN 10191 WHEN 10188 THEN 10192 END
-WHERE `entry` IN (10185,10186,10187,10188);
+WHERE `entry` IN (10185,10186,10187,10188)
+  AND NOT EXISTS (SELECT 1 FROM (SELECT `entry` FROM `coa_boss_flex`) AS already WHERE already.`entry` = 10189);
 
+DELETE FROM `coa_boss_flex` WHERE `entry` = 10185
+  AND EXISTS (SELECT 1 FROM (SELECT `entry` FROM `coa_boss_flex`) AS already WHERE already.`entry` = 10189);
+
+-- Already idempotent: once `id` becomes 10189 this WHERE no longer matches, so a
+-- replay is a safe no-op without needing a guard.
 UPDATE `creature` SET `id` = 10189 WHERE `guid` = 9650000 AND `id` = 10185;
 
 -- The real pillar creatures (from Ascension client data, 2026-09-25).
