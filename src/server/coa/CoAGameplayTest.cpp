@@ -1275,6 +1275,7 @@ private:
         actor.session = std::make_unique<WorldSession>(actor.accountId, std::string(actor.account), 0, nullptr,
             SEC_PLAYER, uint8(expansion), 0, LOCALE_enUS, 0, false, false, 0,
             actor.definition.get<bool>("bot", false));
+        actor.session->SetAscensionCompatEnabled(actor.definition.get<bool>("ascension_client", false));
         actor.session->SetSocketlessPacketObserver([&actor](WorldPacket const& packet)
         {
             try
@@ -1875,6 +1876,7 @@ private:
         {
             Require(metric == "aura" || metric == "aura_stacks" || metric == "aura_charges"
                 || metric == "aura_duration_ms" || metric == "aura_amount" || metric == "aura_positive"
+                || metric == "aura_visible"
                 || metric == "aura_amplitude_ms" || metric == "aura_crit_chance" || metric == "aura_script_value",
                 "Unknown aura metric");
             Require(sSpellMgr->GetSpellInfo(spell) != nullptr, "Unknown aura spell");
@@ -1886,10 +1888,11 @@ private:
                 return aura != nullptr;
             if (!aura)
                 return 0;
-            if (metric == "aura_positive")
+            if (metric == "aura_positive" || metric == "aura_visible")
             {
                 AuraApplication const* application = aura->GetApplicationOfTarget(unit->GetGUID());
-                return application && application->IsPositive();
+                return application && (metric == "aura_visible" ? application->GetSlot() < MAX_AURAS
+                    : application->IsPositive());
             }
             if (metric == "aura_stacks")
                 return aura->GetStackAmount();
@@ -2371,10 +2374,17 @@ private:
             return player->MeleeDamageBonusDone(target, 1000, BASE_ATTACK, info, info->GetSchoolMask());
         }
         if (metric == "spell_modifier" || metric == "spell_cast_time_ms" || metric == "spell_max_range"
-            || metric == "spell_max_stacks" || metric == "spell_healing_done" || metric == "spell_effect_value")
+            || metric == "spell_max_stacks" || metric == "spell_healing_done" || metric == "spell_effect_value"
+            || metric == "spell_family_flags")
         {
             SpellInfo const* info = sSpellMgr->GetSpellInfo(spell);
             Require(info != nullptr, "Unknown spell in metric");
+            if (metric == "spell_family_flags")
+            {
+                uint32 const index = step.get<uint32>("index", 0);
+                Require(index < 3, "Invalid spell family flag word");
+                return info->SpellFamilyFlags[index];
+            }
             if (metric == "spell_modifier")
             {
                 uint32 op = step.get<uint32>("op");

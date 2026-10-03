@@ -6905,6 +6905,8 @@ void Player::_ApplyItemMods(Item* item, uint8 slot, bool apply)
 
     ApplyEnchantment(item, apply);
 
+    sScriptMgr->OnPlayerAfterApplyItemMods(this, item, slot, apply);
+
     LOG_DEBUG("entities.player.items", "_ApplyItemMods complete.");
 }
 
@@ -10500,7 +10502,9 @@ void Player::RestoreSpellMods(Spell* spell, uint32 ownerAuraId, Aura* aura)
             if (iterMod == spell->m_appliedMods.end())
                 continue;
             // Second, check if the current mod is one of those applied by the mod aura
-            if (!(mod->mask & spell->m_spellInfo->SpellFamilyFlags))
+            bool const affected = mod->targetSpellRoot ? spell->m_spellInfo->IsAffectedBySpellMod(mod) :
+                bool(mod->mask & spell->m_spellInfo->SpellFamilyFlags);
+            if (!affected)
                 continue;
 
             // remove from list - This will be done after all mods have been gone through

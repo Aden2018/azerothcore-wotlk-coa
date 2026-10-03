@@ -1522,6 +1522,10 @@ bool SpellInfo::IsAffectedBySpellMod(SpellModifier const* mod) const
     if (mod->targetSpellId && mod->targetSpellId != Id)
         return false;
 
+    if (mod->targetSpellRoot)
+        return affectSpell->SpellFamilyName == SpellFamilyName &&
+            mod->targetSpellRoot == sSpellMgr->GetFirstSpellInChain(Id);
+
     if (SpellFamilyName == 31 && affectSpell->SpellFamilyName == 31)
     {
         // The copied Dark Veil mask collides with Hammer. Route these modifiers
