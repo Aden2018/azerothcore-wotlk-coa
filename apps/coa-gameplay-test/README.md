@@ -127,6 +127,8 @@ For behavior, choose the existing scenario that observes the changed mechanic an
 - **Cleanup:** `primalist-protectors-hand` verifies armor returns after removing all sources;
   `primalist-sharpened-claws` covers expiry and unlearning. Runner/cache tests separately cover database ownership,
   collisions, leases, failed audits and unstopped processes; infrastructure cleanup is part of combined verification.
+- **Damage-based healing:** `reaper-siphon-anima` confirms a Reaper hit on a separate target and checks the
+  resulting health gain against the five-percent Siphon Anima aura.
 - **Chance-limited procs:** `reaper-beyond-death-reliquary` counts the ordinary Soul Bolts and the additional
   helper casts and damage hits across 90 trials. Its 8% chance still leaves about a 0.055% chance of no proc.
 
