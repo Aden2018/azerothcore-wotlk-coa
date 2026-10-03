@@ -637,6 +637,13 @@ creature's remaining death-time respawn timer in seconds; summoned fixtures stil
 as fixture setup. `reward_quest` takes the same fields and optional zero-based `choice` (default 0); it checks normal
 reward eligibility and invokes native reward delivery. These actions do not test quest-giver interaction or objectives.
 `restore_quest_spells` takes `actor` and invokes the native restoration of spells from rewarded quests.
+`action_button_packed` takes `button` and reads the complete action word, including its type.
+`server_packet_u32` takes `opcode` and optional zero-based `index`, and decodes a word from the last
+packet payload. It returns -1 when no such word was sent. These observe server state and packet contents.
+
+`relog` takes `actor`, commits the character through the native save path, logs it out, and reloads it
+through the native character-login handler. It preserves saved character state and the scenario phase.
+
 `login_hooks` takes `actor` and replays registered player-login hooks on the current character; it does not reconnect
 or reload the character from the database. Use it to exercise a repair against deliberately seeded fixture state.
 Hooks read character rows synchronously, so the step first waits for a marker query queued behind every character

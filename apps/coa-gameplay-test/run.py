@@ -40,7 +40,8 @@ METRICS = {
     'health', 'health_pct', 'max_health', 'creature_type', 'respawn_remaining', 'power', 'max_power', 'alive', 'combat', 'victim', 'casting', 'level',
     'aura', 'aura_stacks', 'aura_charges', 'aura_duration_ms', 'aura_amount', 'aura_positive',
     'knows_spell', 'spell_active', 'has_talent', 'talent_points', 'cooldown_ms', 'global_cooldown_ms', 'spell_charges',
-    'action_button', 'item_count', 'carried_item_count', 'carried_pool_item_count', 'carried_variant_item_count',
+    'action_button', 'action_button_packed', 'item_count', 'carried_item_count', 'carried_pool_item_count',
+    'carried_variant_item_count',
     'pool_variant_count', 'pool_retired_item_count', 'pool_row_count', 'pool_item_present',
     'cache_token_count', 'cache_token_stage', 'cache_token_present',
     'free_inventory_slots', 'mail_count', 'mail_item_count', 'mail_has_item',
@@ -87,7 +88,7 @@ METRICS = {
     'spell_heal_count', 'spell_heal_total', 'spell_effective_heal_total',
     'pet_aura_amount', 'pet_aura_amplitude_ms', 'pet_max_health', 'pet_attack_power', 'pet_run_speed_rate',
     'distance', 'spell_proc_count', 'temporary_spell_replacement', 'creature_loot_quality_rate',
-    'quest_menu_items', 'quest_menu_has', 'player_setting', 'server_packets', 'server_packet_contains',
+    'quest_menu_items', 'quest_menu_has', 'player_setting', 'server_packets', 'server_packet_u32', 'server_packet_contains',
     'player_class', 'cached_class', 'at_login_flag', 'wildcard_starter_spells_known', 'action_bar_unknown_spells',
     'wildcard_spells_known', 'wildcard_cards_pending', 'wildcard_cards_collected', 'wildcard_roll_cards_set',
     'wildcard_roll_cards_used', 'wildcard_bonus_pack_progress',
@@ -180,6 +181,7 @@ ACTIONS = {
     'reward_quest': ({'actor', 'quest'}, {'actor', 'quest', 'choice'}),
     'restore_quest_spells': ({'actor'}, {'actor'}),
     'login_hooks': ({'actor'}, {'actor'}),
+    'relog': ({'actor'}, {'actor'}),
     'talent': ({'actor', 'talent', 'rank'}, {'actor', 'talent', 'rank'}),
     'reset_talents': ({'actor'}, {'actor'}),
     'add_item': ({'actor', 'item'}, {'actor', 'item', 'count'}),
@@ -420,6 +422,8 @@ def validate(scenario):
                 require(step['code_actor'] in player_ids, f'{where}: code_actor must be a player')
         if action == 'die' and 'revived' in step:
             require(type(step['revived']) is bool, f'{where}: revived must be boolean')
+        if action == 'relog':
+            require(step['actor'] in player_ids, f'{where}: relog needs a player')
         if action == 'specialization':
             require(step['actor'] in player_ids, f'{where}: specialization needs a player')
             number(step['id'], f'{where}.id', 1, 0xFFFF, True)
@@ -630,14 +634,19 @@ def validate(scenario):
                 require(isinstance(step.get('source'), str) and step['source'].strip() and 'index' in step,
                         f'{where}: metric needs a setting source and index')
                 number(step['index'], f'{where}.index', 0, 2**16 - 1, True)
-            if metric in {'server_packets', 'server_packet_contains'}:
+            if metric in {'server_packets', 'server_packet_u32', 'server_packet_contains'}:
                 number(step.get('opcode'), f'{where}.opcode', 1, 0xFFFF, True)
+            if metric == 'action_button_packed':
+                number(step.get('button'), f'{where}.button', 0, 143, True)
+            if metric == 'server_packet_u32':
+                number(step.get('index', 0), f'{where}.index', 0, 2**16 - 1, True)
             if metric == 'at_login_flag':
                 number(step.get('id'), f'{where}.id', 1, 0xFFFF, True)
             if metric == 'server_packet_contains':
                 require(isinstance(step.get('text'), str) and step['text'].strip(),
                         f'{where}: metric needs the text to look for')
-            if metric in {'knows_spell', 'has_talent', 'talent_points', 'cooldown_ms', 'spell_charges', 'action_button', 'item_count',
+            if metric in {'knows_spell', 'has_talent', 'talent_points', 'cooldown_ms', 'spell_charges',
+                          'action_button', 'action_button_packed', 'item_count',
                           'carried_item_count', 'carried_pool_item_count', 'carried_variant_item_count',
                           'bank_bag_slots', 'taxi_node', 'in_flight', 'taxi_destination', 'stabled_pet_count',
                           'stable_result', 'pet_rows', 'instance_binds_listed', 'spell_active',
@@ -673,7 +682,7 @@ def validate(scenario):
                           'ball_carried_count', 'ball_carried_quest',
                           'ball_turn_in_count', 'ball_turn_in_quest',
                           'temporary_spell_replacement', 'quest_menu_items', 'quest_menu_has',
-                          'player_setting', 'server_packets', 'server_packet_contains',
+                          'player_setting', 'server_packets', 'server_packet_u32', 'server_packet_contains',
                           'player_class', 'cached_class', 'at_login_flag',
                           'wildcard_starter_spells_known', 'action_bar_unknown_spells',
                           'wildcard_spells_known', 'wildcard_cards_pending',

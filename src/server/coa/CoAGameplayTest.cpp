@@ -1816,10 +1816,12 @@ private:
             return known != player->GetSpellMap().end() && known->second->State != PLAYERSPELL_REMOVED
                 && known->second->Active;
         }
-        if (metric == "action_button")
+        if (metric == "action_button" || metric == "action_button_packed")
         {
             uint8 button = uint8(step.get<uint32>("button"));
             ActionButton const* action = player->GetActionButton(button);
+            if (metric == "action_button_packed")
+                return action ? action->packedData : 0;
             return action && action->GetType() == ACTION_BUTTON_SPELL ? action->GetAction() : 0;
         }
         if (metric == "action_bar_unknown_spells")
@@ -2907,6 +2909,22 @@ private:
             auto const found = packets.find(uint16(step.get<uint32>("opcode")));
             return found == packets.end() ? 0.0 : double(found->second);
         }
+        if (metric == "server_packet_u32")
+        {
+            auto const& payloads = _actors.at(step.get<std::string>("actor")).extensionPayloads;
+            auto const found = payloads.find(uint16(step.get<uint32>("opcode")));
+            uint32 const index = step.get<uint32>("index", 0);
+            if (found == payloads.end() || found->second.empty())
+                return -1;
+            std::string const& payload = found->second.back();
+            if (index >= payload.size() / sizeof(uint32))
+                return -1;
+            std::size_t const offset = std::size_t(index) * sizeof(uint32);
+            uint32 value = 0;
+            for (uint32 byte = 0; byte < sizeof(uint32); ++byte)
+                value |= uint32(uint8(payload[offset + byte])) << (byte * 8);
+            return value;
+        }
         if (metric == "server_packet_contains")
         {
             auto const& payloads = _actors.at(step.get<std::string>("actor")).extensionPayloads;
@@ -3093,6 +3111,34 @@ private:
                 Advance();
                 return;
             }
+        }
+        else if (action == "relog")
+        {
+            Actor& actor = _actors.at(step.get<std::string>("actor"));
+            if (!_relogging)
+            {
+                Player* player = GetPlayer(step.get<std::string>("actor"));
+                CharacterDatabaseTransaction transaction = CharacterDatabase.BeginTransaction();
+                player->SaveToDB(transaction, false, true);
+                _relogSave.emplace(CharacterDatabase.AsyncCommitTransaction(transaction));
+                _relogging = true;
+                return;
+            }
+            if (_relogSave)
+            {
+                if (_relogSave->m_future.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+                    return;
+                Require(_relogSave->m_future.get(), "Relog save transaction failed");
+                _relogSave.reset();
+                actor.session->LogoutPlayer(false);
+                LogIn(actor);
+                return;
+            }
+            if (actor.stage != ActorStage::InWorld && actor.stage != ActorStage::Ready)
+                return;
+            Require(actor.session->GetPlayer() && actor.session->GetPlayer()->IsInWorld(),
+                "Relogged character did not enter the world");
+            Reach(actor, ActorStage::Ready);
         }
         else if (action == "login_hooks" && !QueuedCharacterWorkDone())
             return;
@@ -4071,8 +4117,12 @@ private:
         _talentRequestSent = false;
         _characterQueueMarked = false;
         _characterQueueReached = false;
+        _relogging = false;
+        _relogSave.reset();
     }
 
+    bool _relogging = false;
+    std::optional<TransactionCallback> _relogSave;
     bool _targetsCreated = false;
     bool _stepStarted = false;
     bool _talentRequestSent = false;
