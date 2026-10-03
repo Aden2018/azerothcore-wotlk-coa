@@ -38,6 +38,7 @@
 #include "LootMgr.h"
 #include "Map.h"
 #include "MapMgr.h"
+#include "MoveSpline.h"
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
 #include "Opcodes.h"
@@ -1558,6 +1559,8 @@ private:
                 uint32 const reaction = definition.get<uint32>("reaction", REACT_PASSIVE);
                 Require(reaction <= REACT_AGGRESSIVE, "Fixture reaction outside valid range");
                 creature->SetReactState(ReactStates(reaction));
+                if (auto bonus = definition.get_optional<float>("spell_hit_bonus"))
+                    creature->m_modSpellHitChance = *bonus;
             }
         }
         _targetsCreated = true;
@@ -1567,6 +1570,8 @@ private:
     {
         Unit* unit = GetUnit(step.get<std::string>("actor"));
         std::string metric = step.get<std::string>("metric");
+        if (metric == "spell_hit_chance")
+            return unit->m_modSpellHitChance;
         uint32 spell = step.get<uint32>("spell", 0);
         if (metric == "victim")
             return unit->GetVictim() == GetUnit(step.get<std::string>("target")) ? 1.0 : 0.0;
@@ -1627,6 +1632,10 @@ private:
             return unit->IsNonMeleeSpellCast(false);
         if (metric == "moving")
             return unit->isMoving();
+        if (metric == "spline_remaining_ms")
+            return unit->movespline->Finalized() ? 0 : std::max(0, unit->movespline->timeElapsed());
+        if (metric == "spline_speed")
+            return unit->movespline->Finalized() ? 0.0 : unit->movespline->Velocity();
         if (metric == "water_walk")
             return unit->HasWaterWalkAura();
         if (metric == "forced_forward")
@@ -2246,8 +2255,7 @@ private:
         }
         if (metric == "melee_hit_chance")
             return player->m_modMeleeHitChance;
-        if (metric == "spell_hit_chance")
-            return player->m_modSpellHitChance;
+
         if (metric == "spell_power")
         {
             uint32 school = step.get<uint32>("school");
@@ -4869,11 +4877,11 @@ private:
     static void DeleteAccounts(Lane& lane)
     {
         for (std::string const& account : lane.outcome.accounts.accounts)
-            if (uint32 const id = AccountMgr::GetId(account))
+            if (uint32 const id = AccountMgr::GetId(account);
+                id && std::ranges::find(lane.deletedAccounts, id) == lane.deletedAccounts.end())
             {
                 Require(AccountMgr::DeleteAccount(id) == AOR_OK, "Could not delete case account " + account);
-                if (std::ranges::find(lane.deletedAccounts, id) == lane.deletedAccounts.end())
-                    lane.deletedAccounts.push_back(id);
+                lane.deletedAccounts.push_back(id);
             }
         for (std::string name : lane.outcome.accounts.characters)
         {
