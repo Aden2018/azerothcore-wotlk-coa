@@ -8,6 +8,8 @@ No database, server build or game client is needed.
 
 import argparse
 import os
+import re
+import struct
 from pathlib import Path
 import shutil
 import subprocess
@@ -42,6 +44,8 @@ constexpr std::uint32_t FERAL_SHAPESHIFT_MASTERY = 42016;
 constexpr std::uint32_t BEAR_FORM = 42083;
 constexpr std::uint32_t TAME_BEAST_ABILITIES = 40308;
 constexpr std::uint32_t DOMINATE_UNDEAD = 41916;
+constexpr std::uint32_t PATH_OF_STRENGTH = 1149;
+constexpr std::uint32_t PATH_OF_AGILITY = 1150;
 
 bool Holds(std::vector<Entry> const& entries, std::uint32_t id, std::uint32_t rank)
 {
@@ -126,6 +130,15 @@ int main(int, char** argv)
     Check(CheckApply(base, { { PURIFY, 1 }, { PURIFY, 1 } }, nullptr, {}).Result == UPDATE_BAD_ENTRY,
         "an entry listed twice is BAD_ENTRY");
 
+    Check(CheckApply(base, { { PATH_OF_STRENGTH, 1 } }, nullptr, {}).Result == UPDATE_OK,
+        "a level 1 Hero can choose a path");
+    Check(CheckApply(base, { { PATH_OF_STRENGTH, 1 }, { PATH_OF_AGILITY, 1 } }, nullptr, {}).Result ==
+        UPDATE_BAD_ENTRY, "two paths at once are BAD_ENTRY: a choice group holds one entry");
+    Build const strength(catalog, realm, 20, { { PATH_OF_STRENGTH, 1 } });
+    applied = CheckApply(strength, { { PATH_OF_AGILITY, 1 } }, nullptr, {});
+    Check(applied.Result == UPDATE_OK && Holds(applied.Entries, PATH_OF_AGILITY, 1) && !applied.Money &&
+        !applied.Marks, "switching path replaces the old one and costs nothing");
+
     applied = CheckApply(base, { { BEAR_FORM, 1 }, { FERAL_SHAPESHIFT_MASTERY, 1 } }, nullptr, {});
     Check(applied.Result == UPDATE_OK &&
             PositionOf(applied.Entries, FERAL_SHAPESHIFT_MASTERY) < PositionOf(applied.Entries, BEAR_FORM),
@@ -164,6 +177,38 @@ int main(int, char** argv)
 """
 
 
+PATH_SPELLS = (84864, 84865, 84866, 84867, 129243)
+SPELL_DESCRIPTION = 170
+
+
+def tooltip_spells(dbc):
+    data = (dbc / "Spell.dbc").read_bytes()
+    count, _, size, _ = struct.unpack_from("<4I", data, 4)
+    strings = data[20 + count * size:]
+    named = {}
+    for row in range(count):
+        spell_id = struct.unpack_from("<I", data, 20 + row * size)[0]
+        if spell_id in PATH_SPELLS:
+            offset = struct.unpack_from("<I", data, 20 + row * size + SPELL_DESCRIPTION * 4)[0]
+            text = strings[offset:strings.index(bytes(1), offset)].decode("utf-8", "replace")
+            named[spell_id] = sorted({int(value) for value in re.findall(r"@s:(\d+):", text)})
+    return named
+
+
+def companion_table():
+    text = (ROOT / "src/server/coa/AscensionWildcard.cpp").read_text(encoding="utf-8")
+    return {int(head): sorted(int(value) for value in spells.split(","))
+            for head, spells in re.findall(r"\{ (\d+), \{ ([\d, ]+) \} \}", text)}
+
+
+def check_path_passives(dbc):
+    named, table = tooltip_spells(dbc), companion_table()
+    ok = len(named) == len(PATH_SPELLS) and all(len(named[path]) == 2 and table.get(path) == named[path]
+                                                 for path in PATH_SPELLS)
+    print(f"{'PASS' if ok else 'FAIL'}: every path grants the two passives its tooltip names (@s:<spell>)")
+    return ok
+
+
 def main():
     parser = argparse.ArgumentParser(description=CLI_DESCRIPTION)
     parser.add_argument("--dbc-dir", type=Path)
@@ -191,7 +236,8 @@ def main():
         if build.returncode:
             raise SystemExit("Free-pick rules harness did not compile:\n" + build.stdout + build.stderr)
         result = subprocess.run([str(executable), str(args.dbc_dir.resolve())], text=True)
-        raise SystemExit(result.returncode)
+        paths_ok = check_path_passives(args.dbc_dir.resolve())
+        raise SystemExit(result.returncode or (0 if paths_ok else 1))
 
 
 if __name__ == "__main__":
