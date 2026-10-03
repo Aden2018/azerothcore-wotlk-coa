@@ -24,6 +24,7 @@
 #include "WorldSessionMgr.h"
 #include "AscensionCoATalentState.h"
 #include "AscensionWildcard.h"
+#include "AscensionFreepick.h"
 #include "AscensionRunemasterEchoes.h"
 #include "AscensionCollectionModelData.h"
 #include "AscensionAmmunitionData.h"
@@ -1398,6 +1399,8 @@ public:
   {
     if (AscensionWildcard::IsWildcardHero(player))
       return AscensionWildcard::KnownEntries(player);
+    if (AscensionFreepick::IsFreepickHero(player))
+      return AscensionFreepick::KnownEntries(player);
     return AscensionCoATalentState::KnownEntries(player->getClass(), SpellbookOf(player));
   }
 
@@ -1908,7 +1911,8 @@ public:
       _pendingTalentRequests.erase(itr);
     }
 
-    if (!IsAscensionCustomClass(player) && !AscensionWildcard::IsWildcardHero(player))
+    if (!IsAscensionCustomClass(player) && !AscensionWildcard::IsWildcardHero(player) &&
+        !AscensionFreepick::IsFreepickHero(player))
       return;
     for (TalentRequest const& request : requests)
     {
@@ -1939,6 +1943,14 @@ public:
       AscensionWildcard::BuildChoice const choice = AscensionWildcard::ApplyBuildUpload(player, upload);
       refusal.Result = choice.Result;
       refusal.Learn = choice.Learn;
+    }
+    else if (AscensionFreepick::IsFreepickHero(player))
+    {
+      AscensionFreepick::UploadResult const applied = AscensionFreepick::ApplyUpload(player, upload);
+      refusal.Result = applied.Result;
+      refusal.Learn = applied.Learn;
+      refusal.Entry = applied.EntryId;
+      refusal.Rank = applied.Rank;
     }
     else if (!ApplyKnownEntriesUpload(player, upload, refusal))
     {
@@ -6559,6 +6571,7 @@ public:
             AscensionCompatConfig::ENABLED))
     {
       SendAverageItemLevel(player);
+      AscensionFreepick::Synchronize(player);
       AscensionClassService::Instance().SynchronizeProgression(player);
       AscensionClassService::Instance().SynchronizeProficiencies(player);
       AscensionClassService::Instance().SendCharacterAdvancementKnownEntries(player);

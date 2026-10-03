@@ -2,6 +2,7 @@
 
 #include "AscensionWildcard.h"
 #include "AscensionCacheRewards.h"
+#include "AscensionFreepick.h"
 #include "AscensionCoAConfig.h"
 #include "AscensionCompatOpcodes.h"
 #include "AscensionSpecialization.h"
@@ -114,9 +115,20 @@ struct EntrySpells
     std::array<uint32, 6> Spells;
 };
 
-constexpr std::array<EntrySpells, 2> ENTRY_SPELLS = { {
+constexpr std::array<EntrySpells, 13> ENTRY_SPELLS = { {
     { AUTO_SHOT_ENTRY_SPELL, { AUTO_SHOT_SPELL } },
-    { TAME_BEAST_ENTRY_SPELL, { 1515, 883, 2641, 6991, 982, 1462 } } } };
+    { TAME_BEAST_ENTRY_SPELL, { 1515, 883, 2641, 6991, 982, 1462 } },
+    { 891, { 885, 889, 893, 109980 } },
+    { 890, { 884, 887, 892, 109981 } },
+    { 91634, { 91631, 91633, 91652, 109982 } },
+    { 91606, { 91602, 91605, 91651, 109983 } },
+    { 5487, { 779, 277420 } },
+    { 768, { 1082 } },
+    { 48263, { 56222 } },
+    { 25780, { 277422 } },
+    { 71, { 277421 } },
+    { 701463, { 277423 } },
+    { 275585, { 217364, 275588 } } } };
 constexpr uint32 SPELL_RANK_FIRST_SPELL = 1;
 constexpr uint32 SPELL_RANK_SPELL = 2;
 constexpr uint32 SPELL_RANK_RANK = 3;
@@ -1849,9 +1861,11 @@ std::vector<Trainer::Spell> RankTrainerRows(Player const* player)
     return rows;
 }
 
+bool IsRealmHero(Player const* player);
+
 void GrantEntrySpells(Player* player)
 {
-    if (!IsWildcardHero(player))
+    if (!IsRealmHero(player))
         return;
     for (EntrySpells const& entry : ENTRY_SPELLS)
         if (player->HasSpell(entry.EntrySpell))
@@ -1998,7 +2012,7 @@ bool RealmPlaysWildcard = false;
 
 bool IsRealmHero(Player const* player)
 {
-    return RealmPlaysWildcard && player->getClass() == CLASS_HERO;
+    return (RealmPlaysWildcard || AscensionFreepick::RealmIsClassless()) && player->getClass() == CLASS_HERO;
 }
 
 struct SentRunes final : DataMap::Base
@@ -2072,7 +2086,7 @@ public:
 
     bool OnPlayerHasActivePowerType(Player const* player, Powers power) override
     {
-        return (power == POWER_RAGE || power == POWER_ENERGY) && IsWildcardHero(player);
+        return (power == POWER_RAGE || power == POWER_ENERGY) && IsRealmHero(player);
     }
 
     void OnPlayerLearnSpell(Player* player, uint32 spellId) override
@@ -2084,7 +2098,7 @@ public:
 
     void OnPlayerForgotSpell(Player* player, uint32 spellId) override
     {
-        if (!IsWildcardHero(player))
+        if (!IsRealmHero(player))
             return;
         for (EntrySpells const& entry : ENTRY_SPELLS)
             if (entry.EntrySpell == spellId)
