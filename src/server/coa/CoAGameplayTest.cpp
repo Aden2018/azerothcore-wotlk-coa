@@ -1753,6 +1753,44 @@ private:
             Require(sSpellMgr->GetSpellInfo(spell) != nullptr, "Unknown spell in metric");
             return ProcCounter::Count(unit->GetGUID(), spell);
         }
+        if (metric == "spell_proc_chance")
+        {
+            SpellProcEntry const* entry = sSpellMgr->GetSpellProcEntry(spell);
+            Require(entry != nullptr, "Spell has no proc entry");
+            return entry->Chance;
+        }
+        if (metric == "aura_proc_rate")
+        {
+            Aura* aura = unit->GetAura(spell);
+            Require(aura != nullptr, "aura_proc_rate needs the aura on the actor");
+            AuraApplication* application = aura->GetApplicationOfTarget(unit->GetGUID());
+            Unit* other = GetUnit(step.get<std::string>("target"));
+            bool const incoming = step.get<bool>("incoming", false);
+            Unit* actor = incoming ? other : unit;
+            Unit* victim = incoming ? unit : other;
+            uint32 const triggerSpell = step.get<uint32>("trigger_spell", 0);
+            SpellInfo const* trigger = triggerSpell ? sSpellMgr->GetSpellInfo(triggerSpell) : nullptr;
+            Require(!triggerSpell || trigger != nullptr, "Unknown trigger_spell");
+            uint32 const typeMask = step.get<uint32>("type_mask");
+            uint32 const trials = step.get<uint32>("trials", 40000);
+            Require(trials != 0, "aura_proc_rate needs trials");
+            bool const heal = step.get<bool>("heal", false);
+            SpellSchoolMask const school = trigger ? trigger->GetSchoolMask() : SPELL_SCHOOL_MASK_NORMAL;
+            DamageEffectType const damageType = (typeMask & PERIODIC_PROC_FLAG_MASK) ? DOT
+                : trigger ? SPELL_DIRECT_DAMAGE : DIRECT_DAMAGE;
+            DamageInfo damage(actor, victim, 1000, trigger, school, damageType);
+            HealInfo healing(actor, victim, 1000, trigger, school);
+            healing.SetEffectiveHeal(1000);
+            ProcEventInfo event(actor, victim, victim, typeMask,
+                step.get<uint32>("spell_type_mask", heal ? PROC_SPELL_TYPE_HEAL : PROC_SPELL_TYPE_DAMAGE),
+                step.get<uint32>("phase_mask", PROC_SPELL_PHASE_HIT), step.get<uint32>("hit_mask", PROC_HIT_NORMAL),
+                nullptr, heal ? nullptr : &damage, heal ? &healing : nullptr);
+            TimePoint const now = GameTime::SteadyNow();
+            uint32 procs = 0;
+            for (uint32 trial = 0; trial < trials; ++trial)
+                procs += aura->GetProcEffectMask(application, event, now) != 0;
+            return 100.0 * procs / trials;
+        }
         if (metric == "spell_damage_taken" || metric == "melee_damage_taken")
         {
             Unit* attacker = GetUnit(step.get<std::string>("target"));

@@ -87,7 +87,8 @@ METRICS = {
     'spell_damage_count', 'spell_damage_total', 'spell_uses_armor',
     'spell_heal_count', 'spell_heal_total', 'spell_effective_heal_total',
     'pet_aura_amount', 'pet_aura_amplitude_ms', 'pet_max_health', 'pet_attack_power', 'pet_run_speed_rate',
-    'distance', 'spell_proc_count', 'temporary_spell_replacement', 'creature_loot_quality_rate',
+    'distance', 'spell_proc_count', 'spell_proc_chance', 'aura_proc_rate', 'temporary_spell_replacement',
+    'creature_loot_quality_rate',
     'quest_menu_items', 'quest_menu_has', 'player_setting', 'server_packets', 'server_packet_u32', 'server_packet_contains',
     'player_class', 'cached_class', 'at_login_flag', 'wildcard_starter_spells_known', 'action_bar_unknown_spells',
     'wildcard_spells_known', 'wildcard_cards_pending', 'wildcard_cards_collected', 'wildcard_roll_cards_set',
@@ -116,7 +117,8 @@ METRIC_FIELDS = {'actor', 'metric', 'spell', 'power', 'caster', 'effect', 'item'
                  'relative_to', 'ratio_to', 'target', 'quest', 'id', 'stat', 'school', 'hand', 'rating', 'op',
                  'base', 'key', 'index', 'pet', 'critical', 'target_pet', 'periodic', 'name', 'text',
                  'min_distance', 'owner_display', 'skill', 'cache', 'table', 'exclude', 'dungeon', 'source',
-                 'opcode', 'from', 'slot', 'achievement', 'title'}
+                 'opcode', 'from', 'slot', 'achievement', 'title', 'type_mask', 'hit_mask', 'spell_type_mask',
+                 'phase_mask', 'trigger_spell', 'trials', 'incoming', 'heal'}
 ACTIONS = {
     'stop_attack': ({'actor'}, {'actor'}),
     'set_moving': ({'actor', 'enabled'}, {'actor', 'enabled'}),
@@ -515,7 +517,8 @@ def validate(scenario):
                     'spell_immune', 'spell_effect_immune', 'spell_damage_count', 'spell_damage_total',
                     'spell_uses_armor', 'pet_aura_amount', 'pet_aura_amplitude_ms', 'spell_heal_count', 'spell_heal_total',
                     'spell_effective_heal_total', 'spell_energize_count', 'spell_energize_total',
-                    'spell_proc_count', 'temporary_spell_replacement', 'cast_failure',
+                    'spell_proc_count', 'spell_proc_chance', 'aura_proc_rate', 'temporary_spell_replacement',
+                    'cast_failure',
                     'trainer_window_state', 'trainer_window_ability', 'spellbook_superseded_for'}:
                 require('spell' in step, f'{where}: metric needs spell')
             for key in ('pet', 'critical'):
@@ -542,6 +545,17 @@ def validate(scenario):
                           'distance_2d', 'can_detect'} \
                     or metric.startswith('script_'):
                 require('target' in step, f'{where}: damage metric needs target')
+            if metric == 'aura_proc_rate':
+                require('target' in step, f'{where}: {metric} metric needs target')
+                number(step.get('type_mask'), f'{where}.type_mask', 1, 2**32 - 1, True)
+                for key in ('trigger_spell', 'hit_mask', 'spell_type_mask', 'phase_mask'):
+                    if key in step:
+                        number(step[key], f'{where}.{key}', 0, 2**32 - 1, True)
+                if 'trials' in step:
+                    number(step['trials'], f'{where}.trials', 1, 1000000, True)
+                for key in ('incoming', 'heal'):
+                    if key in step:
+                        require(type(step[key]) is bool, f'{where}: {key} must be boolean')
             if metric == 'distance':
                 require('target' in step, f'{where}: {metric} metric needs target')
             if metric == 'stat':
