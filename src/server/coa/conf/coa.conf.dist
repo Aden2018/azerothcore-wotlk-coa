@@ -35,6 +35,14 @@ CoA.CharacterSelectionMaxActive = 128
 # Automatically add appearance and vanity entries for items obtained by a character.
 CoA.AutoCollectAppearances = 1
 
+# Drop at most one wearable item matching an enemy's visible equipment on a rewarded kill.
+# Uses NPC display presets or CreatureDisplayInfoExtra, plus the current weapon/shield entries.
+# Only unbound/BoE gear up to uncommon quality, at or below the enemy's level, is eligible.
+# Stats prefer caster Intellect, defender defenses/Stamina or physical Strength/Agility.
+# The per-kill percentage is a local reconstruction default; original rates were not captured.
+CoA.EquippedGearLoot = 1
+CoA.EquippedGearLootChance = 5
+
 # Wardrobe, outfits, vanity and mount/companion collections for characters played by bots.
 # 0 - never: bot sessions skip the collections (default).
 # 1 - only characters of player accounts played as bots (alts), never random bot accounts:
