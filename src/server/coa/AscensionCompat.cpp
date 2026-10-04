@@ -378,6 +378,11 @@ constexpr uint32 ITEM_FIX_O_TRON_5000 = 97330;
 constexpr std::size_t COMPANION_SPELLS_PER_BATCH = 4;
 constexpr uint32 COMPANION_SPELL_BATCH_INTERVAL_MS = 200;
 
+enum AscensionItems : uint32
+{
+    ITEM_HEARTWOOD_KEY = 1041710
+};
+
 enum AscensionRidingSpells : uint32
 {
     SPELL_RIDING_APPRENTICE = 33388,
@@ -3577,14 +3582,21 @@ public:
     PatchRowTally const sentItems = SendItemRows(player, rows, std::move(itemRows));
     bytes += sentItems.Bytes;
 
-    for (SpellPatchRow const &row : rows.Spells)
-      bytes += SendSpellRow(player, row);
+    uint32 sentSpells = 0;
+    for (SpellPatchRow const& row : rows.Spells)
+      if (!row.RequiresRegistration || Ascension::ClientSpellPatches::Instance().Contains(row.Values[0]))
+      {
+        SpellPatchRow active = row;
+        ApplyServerSpellSelectors(active);
+        bytes += SendSpellRow(player, active);
+        ++sentSpells;
+      }
 
     LOG_INFO("coa",
              "Streamed {} CreatureDisplayInfo, {} ItemDisplayInfo, {} of {} Item "
              "and {} Spell patch rows ({} bytes) to {} in {} ms",
              sent, rows.ItemDisplayInfos.size(), sentItems.Rows,
-             rows.Items.size(), rows.Spells.size(), bytes, player->GetName(),
+             rows.Items.size(), sentSpells, bytes, player->GetName(),
              GetMSTimeDiffToNow(startTime));
   }
 
@@ -3631,13 +3643,15 @@ private:
   struct SpellPatchRow {
     std::array<uint32, SPELL_CLIENT_RECORD_DWORDS> Values{};
     std::array<std::string, SPELL_WIRE_STRING_FIELDS.size()> Strings;
+    bool RequiresRegistration = false;
   };
 
   struct PreparedPatchRows {
     std::vector<uint32> CreatureDisplayIds;
     std::vector<ItemDisplayInfoPatchRow> ItemDisplayInfos;
     std::vector<ItemPatchRow> Items;
-    std::optional<ItemPatchRow> ItemCapacityRow;
+    std::vector<std::size_t> ItemCapacityOrder;
+    std::unordered_set<uint32> SqlItemIds;
     std::unordered_map<uint32, std::size_t> ItemRowIndexById;
     std::vector<SpellPatchRow> Spells;
   };
@@ -3666,6 +3680,8 @@ private:
 
     static std::optional<ItemPatchRow> FindItemRow(PreparedPatchRows const& rows, uint32 itemId)
     {
+        if (rows.SqlItemIds.contains(itemId) && !Ascension::ClientItemPatches::Instance().Contains(itemId))
+            return std::nullopt;
         if (auto const row = rows.ItemRowIndexById.find(itemId); row != rows.ItemRowIndexById.end())
             return rows.Items[row->second];
         return ItemScaling::ClientRow(itemId);
@@ -3673,8 +3689,12 @@ private:
 
     PatchRowTally SendItemRows(Player* player, PreparedPatchRows const& rows, std::vector<ItemPatchRow> itemRows)
     {
-        if (rows.ItemCapacityRow)
-            itemRows.insert(itemRows.begin(), *rows.ItemCapacityRow);
+        for (std::size_t index : rows.ItemCapacityOrder)
+            if (auto const capacity = FindItemRow(rows, rows.Items[index][0]))
+            {
+                itemRows.insert(itemRows.begin(), *capacity);
+                break;
+            }
 
         PatchRowTally sent;
         std::lock_guard lock(_mutex);
@@ -3763,12 +3783,14 @@ private:
       _rows.CreatureDisplayIds = BuildDisplayPatchRows(clientDbcDirectory);
       _rows.ItemDisplayInfos =
           BuildItemDisplayInfoPatchRows(clientDbcDirectory);
-      _rows.Items = BuildItemPatchRows(clientDbcDirectory);
-      if (!_rows.Items.empty())
-        _rows.ItemCapacityRow = *std::max_element(_rows.Items.begin(), _rows.Items.end(),
-            [](ItemPatchRow const& left, ItemPatchRow const& right) { return left[0] < right[0]; });
+      _rows.Items = BuildItemPatchRows(clientDbcDirectory, _rows.SqlItemIds);
       for (std::size_t index = 0; index < _rows.Items.size(); ++index)
+      {
         _rows.ItemRowIndexById.emplace(_rows.Items[index][0], index);
+        _rows.ItemCapacityOrder.push_back(index);
+      }
+      std::sort(_rows.ItemCapacityOrder.begin(), _rows.ItemCapacityOrder.end(),
+          [this](std::size_t left, std::size_t right) { return _rows.Items[left][0] > _rows.Items[right][0]; });
       _rows.Spells = BuildSpellPatchRows();
       _rowsPrepared = true;
     }
@@ -3850,8 +3872,8 @@ private:
   }
 
   static std::vector<ItemPatchRow>
-  BuildItemPatchRows(std::filesystem::path const &clientDbcDirectory) {
-    std::vector<ItemPatchRow> rows = LoadItemPatchRows();
+  BuildItemPatchRows(std::filesystem::path const &clientDbcDirectory, std::unordered_set<uint32>& sqlIds) {
+    std::vector<ItemPatchRow> rows = LoadItemPatchRows(sqlIds);
 
     std::filesystem::path const clientDbc = clientDbcDirectory / "Item.dbc";
     std::optional<std::unordered_set<uint32>> const clientIds =
@@ -3872,7 +3894,7 @@ private:
     for (uint32 itemId = 0; itemId < sItemStore.GetNumRows(); ++itemId) {
       ItemEntry const *entry = sItemStore.LookupEntry(itemId);
       if (!entry || clientIds->contains(itemId) ||
-          overriddenIds.contains(itemId))
+          overriddenIds.contains(itemId) || sqlIds.contains(itemId))
         continue;
 
       rows.push_back({entry->ID, entry->ClassID, entry->SubclassID,
@@ -3902,21 +3924,25 @@ private:
     }
   }
 
-  static std::vector<SpellPatchRow> LoadSqlSpellPatchRows() {
+  static std::vector<SpellPatchRow> LoadSqlSpellPatchRows(std::unordered_set<uint32> const& requested) {
     std::vector<SpellPatchRow> rows;
-    PreparedQueryResult result = WorldDatabase.Query(
-        WorldDatabase.GetPreparedStatement(WORLD_SEL_CLIENT_SPELL_PATCHES));
-    if (!result)
-      return rows;
-    if (result->GetFieldCount() != SPELL_DBC_FIELD_COUNT)
+    std::vector<uint32> ordered(requested.begin(), requested.end());
+    std::sort(ordered.begin(), ordered.end());
+    for (uint32 id : ordered)
     {
-      LOG_ERROR("coa", "spell_dbc has {} columns; the spell patch stream requires {}",
-                result->GetFieldCount(), SPELL_DBC_FIELD_COUNT);
-      return rows;
-    }
+      WorldDatabasePreparedStatement* statement = WorldDatabase.GetPreparedStatement(WORLD_SEL_CLIENT_SPELL_PATCHES);
+      statement->SetData(0, id);
+      PreparedQueryResult result = WorldDatabase.Query(statement);
+      if (!result)
+        continue;
+      if (result->GetFieldCount() != SPELL_DBC_FIELD_COUNT)
+      {
+        LOG_ERROR("coa", "spell_dbc has {} columns; the spell patch stream requires {}",
+                  result->GetFieldCount(), SPELL_DBC_FIELD_COUNT);
+        return {};
+      }
 
-    static_assert(sizeof(SpellEntryfmt) - 1 == SPELL_DBC_FIELD_COUNT);
-    do {
+      static_assert(sizeof(SpellEntryfmt) - 1 == SPELL_DBC_FIELD_COUNT);
       Field const *fields = result->Fetch();
       SpellPatchRow &row = rows.emplace_back();
       std::size_t slot = 0;
@@ -3938,15 +3964,21 @@ private:
       for (std::size_t text = 0; text < SPELL_WIRE_STRING_FIELDS.size(); ++text)
         row.Strings[text] = fields[SPELL_WIRE_STRING_FIELDS[text]].Get<std::string>();
       ApplyServerSpellSelectors(row);
-    } while (result->NextRow());
+    }
     return rows;
   }
 
   static std::vector<SpellPatchRow> BuildSpellPatchRows() {
-    std::vector<SpellPatchRow> rows = LoadSqlSpellPatchRows();
     std::unordered_map<uint32, std::string> descriptions =
         LoadClientSpellDescriptions();
-    std::unordered_set<uint32> requested = Ascension::ClientSpellPatches::Instance().GetIds();
+    std::unordered_set<uint32> descriptionIds;
+    std::unordered_set<uint32> requested = Ascension::ClientSpellPatches::Instance().GetIds(true);
+    for (auto const& [id, description] : descriptions)
+    {
+      requested.insert(id);
+      descriptionIds.insert(id);
+    }
+    std::vector<SpellPatchRow> rows = LoadSqlSpellPatchRows(requested);
     std::unordered_map<uint32, std::size_t> overridden;
     for (std::size_t index = 0; index < rows.size(); ++index)
     {
@@ -4010,6 +4042,8 @@ private:
     for (uint32 spellId : requested)
       LOG_ERROR("coa", "Requested client Spell patch {} has no physical or SQL record", spellId);
 
+    for (SpellPatchRow& row : rows)
+      row.RequiresRegistration = !descriptionIds.contains(row.Values[0]);
     return rows;
   }
 
@@ -4058,8 +4092,9 @@ private:
     return rows;
   }
 
-  static std::vector<ItemPatchRow> LoadItemPatchRows() {
+  static std::vector<ItemPatchRow> LoadItemPatchRows(std::unordered_set<uint32>& sqlIds) {
     std::vector<ItemPatchRow> rows;
+    std::unordered_set<uint32> const requested = Ascension::ClientItemPatches::Instance().GetIds(true);
     QueryResult result = WorldDatabase.Query(
         "SELECT `ID`, `ClassID`, `SubclassID`, `Sound_Override_Subclassid`, "
         "`Material`, `DisplayInfoID`, `InventoryType`, `SheatheType` "
@@ -4069,6 +4104,10 @@ private:
 
     do {
       Field const *fields = result->Fetch();
+      uint32 const id = fields[0].Get<uint32>();
+      sqlIds.insert(id);
+      if (!requested.contains(id))
+        continue;
       ItemPatchRow &row = rows.emplace_back();
       for (std::size_t field = 0; field < row.size(); ++field)
         row[field] = static_cast<uint32>(fields[field].Get<int32>());
@@ -8175,6 +8214,7 @@ void AppendConfiguredClientConfigs(AscensionClientConfig& config) {
 }
 
 void AddAscensionCompatScripts() {
+  Ascension::ClientItemPatches::Instance().Register(ITEM_HEARTWOOD_KEY);
   RegisterAscensionClientConfig([](AscensionClientConfig& config) {
     config.Booleans.emplace_back("CONFIG_CHARACTER_ADVANCEMENT_BUILD_INSPECT_ENABLED", true);
   });
