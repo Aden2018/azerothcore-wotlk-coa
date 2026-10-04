@@ -49,6 +49,7 @@ void AddCoABugReportScripts();
 void AddCoAPlayerTicketScripts();
 void AddAscensionWildcardScripts();
 void AddAscensionFreepickScripts();
+void AddAscensionTamingScripts();
 void AddAscensionAchievementConditionScripts();
 void AddAscensionAccountInfoScripts();
 void AddCoAGameplayTestScripts();
@@ -592,6 +593,7 @@ void AddCoAScripts()
     AddCoAPlayerTicketScripts();
     AddAscensionWildcardScripts();
     AddAscensionFreepickScripts();
+    AddAscensionTamingScripts();
     AddAscensionAchievementConditionScripts();
     AddAscensionAccountInfoScripts();
     AddCoAGameplayTestScripts();
