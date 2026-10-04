@@ -3462,15 +3462,25 @@ public:
     std::lock_guard lock(_mutex);
     _streamedPlayers.erase(guid);
     _sentItemRows.erase(guid);
+    _onDemandItemRows.erase(guid);
     _fallbackTimers[guid] = DISPLAY_PATCH_FALLBACK_DELAY_MS;
   }
 
   void OnPlayerLogout(Player *player) {
     uint32 const guid = player->GetGUID().GetCounter();
-    std::lock_guard lock(_mutex);
-    _streamedPlayers.erase(guid);
-    _sentItemRows.erase(guid);
-    _fallbackTimers.erase(guid);
+    PatchRowTally onDemand;
+    {
+      std::lock_guard lock(_mutex);
+      _streamedPlayers.erase(guid);
+      _sentItemRows.erase(guid);
+      _fallbackTimers.erase(guid);
+      if (auto node = _onDemandItemRows.extract(guid))
+        onDemand = node.mapped();
+    }
+
+    if (onDemand.Rows)
+      LOG_INFO("coa", "Streamed {} Item patch rows ({} bytes) on demand to {} during the session",
+               onDemand.Rows, onDemand.Bytes, player->GetName());
   }
 
     void SendItemRowOnDemand(Player* player, uint32 itemId)
@@ -3479,8 +3489,16 @@ public:
             return;
 
         PreparedPatchRows const& rows = GetPreparedPatchRows();
-        if (std::optional<ItemPatchRow> const row = FindItemRow(rows, itemId))
-            SendItemRows(player, rows, { *row });
+        std::optional<ItemPatchRow> const row = FindItemRow(rows, itemId);
+        if (!row)
+            return;
+
+        PatchRowTally const sent = SendItemRows(player, rows, { *row });
+        if (!sent.Rows)
+            return;
+
+        std::lock_guard lock(_mutex);
+        _onDemandItemRows[player->GetGUID().GetCounter()].Add(sent);
     }
 
   void OnPlayerUpdate(Player *player, uint32 diff) {
@@ -3530,30 +3548,31 @@ public:
 
     uint32 const startTime = getMSTime();
 
-    SendLoadingScreenRow(player);
+    std::size_t bytes = SendLoadingScreenRow(player);
 
     uint32 sent = 0;
     for (uint32 displayId : rows.CreatureDisplayIds) {
       if (CreatureDisplayInfoEntry const *entry =
               sCreatureDisplayInfoStore.LookupEntry(displayId)) {
-        SendDisplayInfoRow(player, *entry);
+        bytes += SendDisplayInfoRow(player, *entry);
         ++sent;
       }
     }
 
     for (ItemDisplayInfoPatchRow const &row : rows.ItemDisplayInfos)
-      SendItemDisplayInfoRow(player, row);
+      bytes += SendItemDisplayInfoRow(player, row);
 
-    uint32 const sentItems = SendItemRows(player, rows, std::move(itemRows));
+    PatchRowTally const sentItems = SendItemRows(player, rows, std::move(itemRows));
+    bytes += sentItems.Bytes;
 
     for (SpellPatchRow const &row : rows.Spells)
-      SendSpellRow(player, row);
+      bytes += SendSpellRow(player, row);
 
     LOG_INFO("coa",
              "Streamed {} CreatureDisplayInfo, {} ItemDisplayInfo, {} of {} Item "
-             "and {} Spell patch rows to {} in {} ms",
-             sent, rows.ItemDisplayInfos.size(), sentItems,
-             rows.Items.size(), rows.Spells.size(), player->GetName(),
+             "and {} Spell patch rows ({} bytes) to {} in {} ms",
+             sent, rows.ItemDisplayInfos.size(), sentItems.Rows,
+             rows.Items.size(), rows.Spells.size(), bytes, player->GetName(),
              GetMSTimeDiffToNow(startTime));
   }
 
@@ -3568,6 +3587,16 @@ private:
   };
 
   using ItemPatchRow = std::array<uint32, 8>;
+
+  struct PatchRowTally {
+    uint32 Rows = 0;
+    std::size_t Bytes = 0;
+
+    void Add(PatchRowTally const &other) {
+      Rows += other.Rows;
+      Bytes += other.Bytes;
+    }
+  };
 
   static constexpr uint32 SPELL_DBC_FIELD_COUNT = 234;
   static constexpr uint32 SPELL_CLIENT_RECORD_DWORDS = 170;
@@ -3624,22 +3653,27 @@ private:
         return ItemScaling::ClientRow(itemId);
     }
 
-    uint32 SendItemRows(Player* player, PreparedPatchRows const& rows, std::vector<ItemPatchRow> itemRows)
+    PatchRowTally SendItemRows(Player* player, PreparedPatchRows const& rows, std::vector<ItemPatchRow> itemRows)
     {
         if (rows.ItemCapacityRow)
             itemRows.insert(itemRows.begin(), *rows.ItemCapacityRow);
 
-        uint32 sent = 0;
+        PatchRowTally sent;
         std::lock_guard lock(_mutex);
         std::unordered_set<uint32>& sentItemRows = _sentItemRows[player->GetGUID().GetCounter()];
         for (ItemPatchRow const& row : itemRows)
             if (sentItemRows.insert(row[0]).second)
             {
-                SendItemRow(player, row);
-                ++sent;
+                sent.Bytes += SendItemRow(player, row);
+                ++sent.Rows;
             }
         return sent;
     }
+
+  static std::size_t SendRowPacket(Player *player, WorldPacket const &packet) {
+    player->GetSession()->SendPacket(&packet);
+    return packet.size();
+  }
 
   static void AppendSizedString(WorldPacket &packet, std::string const &text) {
     packet << uint32(text.size());
@@ -3647,16 +3681,16 @@ private:
       packet.append(reinterpret_cast<uint8 const *>(text.data()), text.size());
   }
 
-  void SendLoadingScreenRow(Player *player) const {
+  std::size_t SendLoadingScreenRow(Player *player) const {
     WorldPacket packet(SMSG_PATCH_LOADING_SCREENS, 24);
     uint8 loadingScreenRow[16] = {};
     packet.append(loadingScreenRow, sizeof(loadingScreenRow));
     packet << uint32(0) << uint32(0);
-    player->GetSession()->SendPacket(&packet);
+    return SendRowPacket(player, packet);
   }
 
-  void SendDisplayInfoRow(Player *player,
-                          CreatureDisplayInfoEntry const &entry) const {
+  std::size_t SendDisplayInfoRow(Player *player,
+                                 CreatureDisplayInfoEntry const &entry) const {
     WorldPacket packet(SMSG_PATCH_CREATURE_DISPLAY_INFO, 80);
 
     uint32 const soundId = 0;
@@ -3672,34 +3706,34 @@ private:
     for (uint8 stringIndex = 0; stringIndex < 4; ++stringIndex)
       packet << uint32(0);
 
-    player->GetSession()->SendPacket(&packet);
+    return SendRowPacket(player, packet);
   }
 
-  void SendItemDisplayInfoRow(Player *player,
-                              ItemDisplayInfoPatchRow const &row) const {
+  std::size_t SendItemDisplayInfoRow(Player *player,
+                                     ItemDisplayInfoPatchRow const &row) const {
     WorldPacket packet(SMSG_PATCH_ITEM_DISPLAY_INFO, 160);
     for (uint32 value : row.Values)
       packet << value;
     for (std::string const &text : row.Strings)
       AppendSizedString(packet, text);
-    player->GetSession()->SendPacket(&packet);
+    return SendRowPacket(player, packet);
   }
 
-  void SendItemRow(Player *player, ItemPatchRow const &row) const {
+  std::size_t SendItemRow(Player *player, ItemPatchRow const &row) const {
     WorldPacket packet(SMSG_PATCH_ITEM, row.size() * sizeof(uint32));
     for (uint32 value : row)
       packet << value;
-    player->GetSession()->SendPacket(&packet);
+    return SendRowPacket(player, packet);
   }
 
-  void SendSpellRow(Player *player, SpellPatchRow const &row) const {
+  std::size_t SendSpellRow(Player *player, SpellPatchRow const &row) const {
     WorldPacket packet(SMSG_PATCH_SPELL,
                        row.Values.size() * sizeof(uint32) + 1024);
     for (uint32 value : row.Values)
       packet << value;
     for (std::string const &text : row.Strings)
       AppendSizedString(packet, text);
-    player->GetSession()->SendPacket(&packet);
+    return SendRowPacket(player, packet);
   }
 
   PreparedPatchRows const &GetPreparedPatchRows() {
@@ -4065,6 +4099,7 @@ private:
   std::mutex _mutex;
   std::unordered_set<uint32> _streamedPlayers;
   std::unordered_map<uint32, std::unordered_set<uint32>> _sentItemRows;
+  std::unordered_map<uint32, PatchRowTally> _onDemandItemRows;
   std::unordered_map<uint32, uint32> _fallbackTimers;
 
   std::mutex _cacheMutex;
