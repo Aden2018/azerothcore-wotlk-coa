@@ -300,6 +300,9 @@ struct npc_ascension_witch_hunter_field : ScriptedAI
         ownerGuid = owner->GetGUID();
         me->SetOwnerGUID(ownerGuid);
         me->SetFaction(owner->GetFaction());
+        me->m_ControlledByPlayer = true;
+        me->SetUnitFlag(UNIT_FLAG_PLAYER_CONTROLLED);
+        me->SetByteValue(UNIT_FIELD_BYTES_2, 1, owner->GetByteValue(UNIT_FIELD_BYTES_2, 1));
         me->SetLevel(owner->GetLevel());
         me->SetReactState(REACT_PASSIVE);
         me->SetImmuneToNPC(true);
@@ -324,6 +327,7 @@ struct npc_ascension_witch_hunter_field : ScriptedAI
             me->DespawnOrUnsummon();
             return;
         }
+        me->SetByteValue(UNIT_FIELD_BYTES_2, 1, owner->GetByteValue(UNIT_FIELD_BYTES_2, 1));
         uint32 entry = me->GetEntry();
         if (entry == 254862)
         {
