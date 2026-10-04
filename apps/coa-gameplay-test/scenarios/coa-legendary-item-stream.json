@@ -63,7 +63,7 @@
       "opcode": 86,
       "fields": [
         {
-          "u32": 9700080
+          "u32": 9700060
         }
       ],
       "early": false,
@@ -75,7 +75,7 @@
       "opcode": 86,
       "fields": [
         {
-          "u32": 9700080
+          "u32": 9700060
         }
       ],
       "consumed": false,
@@ -86,7 +86,7 @@
       "actor": "viewer",
       "metric": "server_packets",
       "opcode": 88,
-      "row": 9700080,
+      "row": 9700060,
       "equals": 1,
       "within_ms": 2000
     },
@@ -95,9 +95,9 @@
       "actor": "viewer",
       "metric": "server_packet_u32",
       "opcode": 2354,
-      "row": 9700080,
+      "row": 9700060,
       "index": 0,
-      "equals": 9700080,
+      "equals": 9700060,
       "within_ms": 2000
     },
     {
@@ -353,7 +353,7 @@
           "u32": 9706301
         },
         {
-          "u32": 9706380
+          "u32": 9706360
         }
       ]
     },
@@ -362,9 +362,9 @@
       "actor": "viewer",
       "metric": "server_packet_u32",
       "opcode": 2354,
-      "row": 9706380,
+      "row": 9706360,
       "index": 0,
-      "equals": 9706380,
+      "equals": 9706360,
       "within_ms": 2000
     },
     {
@@ -386,7 +386,7 @@
           "u32": 9700029
         },
         {
-          "u32": 9700080
+          "u32": 9700060
         }
       ]
     },
@@ -404,7 +404,7 @@
       "actor": "viewer",
       "metric": "server_packets",
       "opcode": 88,
-      "row": 9700080,
+      "row": 9700060,
       "equals": 2,
       "within_ms": 2000
     },
@@ -5631,9 +5631,9 @@
       "actor": "viewer",
       "metric": "server_packet_u32",
       "opcode": 2354,
-      "row": 9700080,
+      "row": 9700060,
       "index": 0,
-      "equals": 9700080
+      "equals": 9700060
     },
     {
       "action": "assert",
@@ -5649,9 +5649,9 @@
       "actor": "viewer",
       "metric": "server_packet_u32",
       "opcode": 2354,
-      "row": 9706380,
+      "row": 9706360,
       "index": 0,
-      "equals": 9706380
+      "equals": 9706360
     },
     {
       "action": "assert",
