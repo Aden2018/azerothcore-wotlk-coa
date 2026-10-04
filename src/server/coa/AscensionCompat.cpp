@@ -3454,8 +3454,7 @@ public:
   }
 
   void OnPlayerLogin(Player *player) {
-    if (!ascensionCompatConfig.GetConfigValue<bool>(
-            AscensionCompatConfig::SEND_DISPLAY_PATCHES))
+    if (!ReceivesPatchRows(player))
       return;
 
     uint32 const guid = player->GetGUID().GetCounter();
@@ -3485,7 +3484,7 @@ public:
 
     void SendItemRowOnDemand(Player* player, uint32 itemId)
     {
-        if (!ascensionCompatConfig.GetConfigValue<bool>(AscensionCompatConfig::SEND_DISPLAY_PATCHES))
+        if (!ReceivesPatchRows(player))
             return;
 
         PreparedPatchRows const& rows = GetPreparedPatchRows();
@@ -3502,8 +3501,7 @@ public:
     }
 
   void OnPlayerUpdate(Player *player, uint32 diff) {
-    if (!ascensionCompatConfig.GetConfigValue<bool>(
-            AscensionCompatConfig::SEND_DISPLAY_PATCHES))
+    if (!ReceivesPatchRows(player))
       return;
 
     uint32 const guid = player->GetGUID().GetCounter();
@@ -3577,6 +3575,12 @@ public:
   }
 
 private:
+  static bool ReceivesPatchRows(Player const *player) {
+    return ascensionCompatConfig.GetConfigValue<bool>(
+               AscensionCompatConfig::SEND_DISPLAY_PATCHES) &&
+           !player->GetSession()->IsBot();
+  }
+
   static constexpr std::size_t ITEM_DISPLAY_INFO_FIELD_COUNT = 25;
   static constexpr std::array<uint8, 14> ITEM_DISPLAY_INFO_STRING_FIELDS = {
       1, 2, 3, 4, 5, 6, 15, 16, 17, 18, 19, 20, 21, 22};
